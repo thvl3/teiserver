@@ -60,6 +60,12 @@ defmodule Teiserver.Logging.SafeLogger do
     # token=value patterns
     {~r/(?i)(token|access_token|refresh_token|api_key|apikey|secret|secret_key)[=:]\s*["']?[^"'\s,}\]&]+["']?/,
      "\\1=#{@redacted_value}"},
+    # Elixir inspect format: "password" => "value" or :password => "value"
+    {~r/(?i)[":]?(password|passwd|pwd|token|access_token|refresh_token|api_key|apikey|secret|secret_key|cookie|session)["']?\s*=>\s*["']?[^"'\s,}\]&]+["']?/,
+     "\\1 => #{@redacted_value}"},
+    # JSON format with colon: "password":"value" or "password": "value"
+    {~r/(?i)"(password|passwd|pwd|token|access_token|refresh_token|api_key|apikey|secret|secret_key|cookie|session)"\s*:\s*"[^"]*"/,
+     "\"\\1\": \"#{@redacted_value}\""},
     # Bearer token in authorization headers
     {~r/(?i)Bearer\s+[A-Za-z0-9\-_\.]+/, "Bearer #{@redacted_value}"},
     # Basic auth
@@ -152,6 +158,7 @@ defmodule Teiserver.Logging.SafeLogger do
     additional_keys =
       Application.get_env(:teiserver, __MODULE__, [])
       |> Keyword.get(:additional_sensitive_keys, [])
+      |> Enum.map(&String.downcase/1)
 
     @default_sensitive_keys ++ additional_keys
   end
@@ -171,6 +178,10 @@ defmodule Teiserver.Logging.SafeLogger do
       String.contains?(normalized_key, sensitive_key)
     end)
   end
+
+  # For unsupported types (integers, structs, etc.), return false
+  # This allows the map sanitization to continue without crashing
+  def sensitive_key?(_key), do: false
 
   # Private functions
 
