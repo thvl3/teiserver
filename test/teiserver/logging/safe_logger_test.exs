@@ -261,6 +261,25 @@ defmodule Teiserver.Logging.SafeLoggerTest do
       result = SafeLogger.sanitize(input)
       assert result == %{"CUSTOM_SECRET" => "[REDACTED]", "username" => "john"}
     end
+
+    test "ignores non-string values in additional_sensitive_keys" do
+      # Save original config
+      original_config = Application.get_env(:teiserver, Teiserver.Logging.SafeLogger, [])
+
+      # Set config with mixed types (should filter out non-strings)
+      Application.put_env(:teiserver, Teiserver.Logging.SafeLogger,
+        additional_sensitive_keys: ["valid_key", :atom_key, 123, %{invalid: "map"}]
+      )
+
+      # Should only include the valid string key
+      keys = SafeLogger.sensitive_keys()
+      assert "valid_key" in keys
+      refute :atom_key in keys
+      refute 123 in keys
+
+      # Restore config
+      Application.put_env(:teiserver, Teiserver.Logging.SafeLogger, original_config)
+    end
   end
 
   describe "logger functions" do

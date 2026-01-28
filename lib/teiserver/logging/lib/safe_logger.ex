@@ -158,6 +158,7 @@ defmodule Teiserver.Logging.SafeLogger do
     additional_keys =
       Application.get_env(:teiserver, __MODULE__, [])
       |> Keyword.get(:additional_sensitive_keys, [])
+      |> Enum.filter(&is_binary/1)
       |> Enum.map(&String.downcase/1)
 
     @default_sensitive_keys ++ additional_keys
