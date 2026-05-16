@@ -1,21 +1,23 @@
 defmodule Teiserver.Telemetry.UserPropertyTest do
   @moduledoc false
-  use Teiserver.DataCase
-  alias Teiserver.{Telemetry}
+
+  alias Ecto.Adapters.SQL
   alias Teiserver.TeiserverTestLib
+  alias Teiserver.Telemetry
+  use Teiserver.DataCase
 
   test "user properties" do
     r = :rand.uniform(999_999_999)
 
     # Start by removing all user properties
     query = "DELETE FROM telemetry_user_properties;"
-    Ecto.Adapters.SQL.query(Repo, query, [])
+    SQL.query(Repo, query, [])
 
     user = TeiserverTestLib.new_user("user_property_user")
     assert Telemetry.list_user_properties() |> Enum.count() == 0
 
     # Log the property
-    {result, _} = Telemetry.log_user_property(user.id, "user.user_property-#{r}", "value")
+    {result, _property} = Telemetry.log_user_property(user.id, "user.user_property-#{r}", "value")
 
     assert result == :ok
 
@@ -33,7 +35,8 @@ defmodule Teiserver.Telemetry.UserPropertyTest do
     assert Enum.member?(type_list, "user.user_property-#{r}")
 
     # Now try updating it
-    {result, _} = Telemetry.log_user_property(user.id, "user.user_property-#{r}", "value-updated")
+    {result, _property} =
+      Telemetry.log_user_property(user.id, "user.user_property-#{r}", "value-updated")
 
     assert result == :ok
 

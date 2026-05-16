@@ -35,7 +35,7 @@
               name: "matches",
               label: "Matches",
               active: @active,
-              url: Routes.ts_admin_match_path(@conn, :index),
+              url: ~p"/teiserver/admin/matches",
               icon: Teiserver.Battle.MatchLib.icon()
             )}
 
@@ -45,16 +45,6 @@
               active: @active,
               url: ~p"/admin/chat",
               icon: Teiserver.Chat.LobbyMessageLib.icon()
-            )}
-          <% end %>
-
-          <%= if allow?(assigns[:current_user], "Moderator") do %>
-            {central_component("sub_menu_icon",
-              name: "achievements",
-              label: "Achievements",
-              active: @active,
-              url: Routes.ts_admin_achievement_path(@conn, :index),
-              icon: Teiserver.Game.AchievementTypeLib.icon()
             )}
           <% end %>
 

@@ -1,12 +1,13 @@
 defmodule TeiserverWeb.Admin.BadgeTypeController do
-  use TeiserverWeb, :controller
-
   alias Teiserver.Account
   alias Teiserver.Account.BadgeType
   alias Teiserver.Account.BadgeTypeLib
   alias Teiserver.Helper.StylingHelper
 
+  use TeiserverWeb, :controller
+
   plug Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Account.BadgeType,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}
@@ -70,7 +71,7 @@ defmodule TeiserverWeb.Admin.BadgeTypeController do
       {:ok, _badge_type} ->
         conn
         |> put_flash(:info, "Badge Type created successfully.")
-        |> redirect(to: Routes.ts_admin_badge_type_path(conn, :index))
+        |> redirect(to: ~p"/teiserver/admin/badge_types")
 
       {:error, %Ecto.Changeset{} = changeset} ->
         conn
@@ -100,7 +101,7 @@ defmodule TeiserverWeb.Admin.BadgeTypeController do
       {:ok, _badge_type} ->
         conn
         |> put_flash(:info, "Badge Type updated successfully.")
-        |> redirect(to: Routes.ts_admin_badge_type_path(conn, :index))
+        |> redirect(to: ~p"/teiserver/admin/badge_types")
 
       {:error, %Ecto.Changeset{} = changeset} ->
         conn
@@ -122,6 +123,6 @@ defmodule TeiserverWeb.Admin.BadgeTypeController do
 
     conn
     |> put_flash(:info, "Badge Type deleted successfully.")
-    |> redirect(to: Routes.ts_admin_badge_type_path(conn, :index))
+    |> redirect(to: ~p"/teiserver/admin/badge_types")
   end
 end

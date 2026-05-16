@@ -4,15 +4,19 @@ defmodule Teiserver.Account.LoginThrottleServer do
   Otherwise it is put in a queue and will later receive a {:login_accepted, userid} message
   when it is allowed to do so
   """
-  use GenServer
-  require Logger
-  alias Teiserver.{Account, CacheUser, Config}
+
+  alias Teiserver.Account
+  alias Teiserver.Account.Auth
+  alias Teiserver.Config
   alias Teiserver.Data.Types, as: T
   alias Teiserver.Helpers.BurstyRateLimiter
+  use GenServer
+  require Logger
 
   @typep member :: %{pid: pid(), mon_ref: reference(), user_id: T.userid()}
   @typep state :: %{
            tick_timer_ref: :timer.tref() | nil,
+           total_limit: non_neg_integer(),
            queue: :queue.queue(member()),
            monitors: MapSet.t(pid()),
            rate_limiter: BurstyRateLimiter.t()
@@ -24,16 +28,17 @@ defmodule Teiserver.Account.LoginThrottleServer do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
-  @impl true
+  @impl GenServer
   @spec init(term()) :: {:ok, state()}
   def init(_args) do
     Logger.metadata(actor_id: "LoginThrottleServer")
     {:ok, timer_ref} = :timer.send_interval(@default_tick_period, :tick)
-    default_rate = Teiserver.Config.get_site_config_cache("system.Login rate")
+    default_rate = Config.get_site_config_cache("system.Login rate")
     rate_limiter = BurstyRateLimiter.per_second(default_rate) |> BurstyRateLimiter.set_empty()
 
     state = %{
       tick_timer_ref: timer_ref,
+      total_limit: Config.get_site_config_cache("system.User limit"),
       queue: :queue.new(),
       monitors: MapSet.new(),
       rate_limiter: rate_limiter
@@ -43,10 +48,10 @@ defmodule Teiserver.Account.LoginThrottleServer do
   end
 
   @spec get_queue_length :: non_neg_integer()
-  def get_queue_length() do
+  def get_queue_length do
     GenServer.call(__MODULE__, :queue_size)
   catch
-    :exit, {:noproc, _} -> 0
+    :exit, {:noproc, _call} -> 0
   end
 
   @doc """
@@ -55,6 +60,10 @@ defmodule Teiserver.Account.LoginThrottleServer do
   @spec attempt_login(pid(), T.userid()) :: boolean()
   def attempt_login(pid, userid) do
     GenServer.call(__MODULE__, {:attempt_login, pid, userid})
+  end
+
+  def set_login_limit(limit) do
+    GenServer.call(__MODULE__, {:set_login_limit, limit})
   end
 
   @doc """
@@ -87,19 +96,19 @@ defmodule Teiserver.Account.LoginThrottleServer do
   @doc """
   used for test, to trigger the login
   """
-  def tick() do
+  def tick do
     Process.whereis(__MODULE__) |> send(:tick)
   end
 
   @doc """
   Used for tests, terminate and restart the genserver
   """
-  def restart() do
+  def restart do
     :ok = Supervisor.terminate_child(Teiserver.Supervisor, __MODULE__)
     Supervisor.restart_child(Teiserver.Supervisor, __MODULE__)
   end
 
-  @impl true
+  @impl GenServer
   def handle_call(:queue_size, _from, state) do
     result = :queue.len(state.queue)
     {:reply, result, state}
@@ -107,18 +116,21 @@ defmodule Teiserver.Account.LoginThrottleServer do
 
   def handle_call({:attempt_login, pid, userid}, _from, state) do
     category = categorise_user(userid)
-    capacity = get_capacity()
-
-    can_login? = category == :instant or (capacity > 0 && :queue.is_empty(state.queue))
+    capacity = get_capacity(state.total_limit)
 
     {new_state, can_login?} =
-      if can_login? do
-        case BurstyRateLimiter.try_acquire(state.rate_limiter) do
-          {:ok, updated_rl} -> {%{state | rate_limiter: updated_rl}, true}
-          _ -> {add_user_to_queue(state, pid, userid), false}
-        end
-      else
-        {add_user_to_queue(state, pid, userid), false}
+      cond do
+        category == :instant ->
+          {state, true}
+
+        capacity > 0 && :queue.is_empty(state.queue) ->
+          case BurstyRateLimiter.try_acquire(state.rate_limiter) do
+            {:ok, updated_rl} -> {%{state | rate_limiter: updated_rl}, true}
+            _error -> {add_user_to_queue(state, pid, userid), false}
+          end
+
+        true ->
+          {add_user_to_queue(state, pid, userid), false}
       end
 
     {:reply, can_login?, new_state}
@@ -128,9 +140,13 @@ defmodule Teiserver.Account.LoginThrottleServer do
     {:reply, :ok, %{state | rate_limiter: rl}}
   end
 
-  @impl true
+  def handle_call({:set_login_limit, limit}, _from, state) do
+    {:reply, :ok, %{state | total_limit: limit}}
+  end
+
+  @impl GenServer
   def handle_info(:tick, state) do
-    capacity = get_capacity()
+    capacity = get_capacity(state.total_limit)
 
     if capacity <= 0 do
       {:noreply, state}
@@ -140,7 +156,7 @@ defmodule Teiserver.Account.LoginThrottleServer do
     end
   end
 
-  def handle_info({:DOWN, _, :process, pid, _reason}, state) do
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
     # don't traverse the queue to remove the member since it's a relatively
     # expensive operation.
     # This means the queue length doesn't reflect live clients, but it's
@@ -149,7 +165,7 @@ defmodule Teiserver.Account.LoginThrottleServer do
     {:noreply, state}
   end
 
-  @impl true
+  @impl GenServer
   def handle_cast({:set_tick_period, new_period}, state) do
     if state.tick_timer_ref do
       :timer.cancel(state.tick_timer_ref)
@@ -178,7 +194,7 @@ defmodule Teiserver.Account.LoginThrottleServer do
 
   defp dequeue_users(n, state) do
     case :queue.out(state.queue) do
-      {:empty, _} ->
+      {:empty, _queue} ->
         state
 
       {{:value, member}, rest} ->
@@ -197,7 +213,7 @@ defmodule Teiserver.Account.LoginThrottleServer do
               send(member.pid, {:login_accepted, member.user_id})
               dequeue_users(n - 1, new_state)
 
-            _ ->
+            _error ->
               state
           end
         else
@@ -212,17 +228,14 @@ defmodule Teiserver.Account.LoginThrottleServer do
   # there aren't many of these users, so allowing them doesn't have a big impact
   @spec categorise_user(T.userid()) :: atom
   defp categorise_user(userid) do
-    user = Account.get_user_by_id(userid)
-    bypass_roles = ["Bot", "Contributor", "VIP", "BAR+"]
-
-    cond do
-      CacheUser.has_any_role?(user, bypass_roles) -> :instant
-      true -> :standard
+    if Auth.has_any_role?(userid, ["Bot", "Contributor", "VIP", "BAR+"]) do
+      :instant
+    else
+      :standard
     end
   end
 
-  defp get_capacity() do
-    total_limit = Config.get_site_config_cache("system.User limit")
+  defp get_capacity(total_limit) do
     count = Account.count_non_bot_clients()
     total_limit - count
   end

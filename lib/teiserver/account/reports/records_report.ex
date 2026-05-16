@@ -1,14 +1,15 @@
 defmodule Teiserver.Account.RecordsReport do
   @moduledoc false
-  alias Teiserver.Repo
-  alias Teiserver.Logging
+  alias Ecto.Adapters.SQL
   alias Teiserver.Helper.DatePresets
+  alias Teiserver.Logging
+  alias Teiserver.Repo
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-trophy"
+  def icon, do: "fa-solid fa-trophy"
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Admin"
+  def permissions, do: "Moderator"
 
   @top_count 3
 
@@ -73,7 +74,7 @@ defmodule Teiserver.Account.RecordsReport do
       LIMIT $1
     """
 
-    case Ecto.Adapters.SQL.query(Repo, query, [@top_count, start_date]) do
+    case SQL.query(Repo, query, [@top_count, start_date]) do
       {:ok, results} ->
         results.rows
 

@@ -1,12 +1,14 @@
 defmodule Teiserver.Protocols.Spring.PartyIn do
+  @moduledoc false
+  alias Phoenix.PubSub
+  alias Teiserver.Account
+  alias Teiserver.Account.UserCacheLib
+  alias Teiserver.Protocols.SpringOut
+
   require Logger
 
-  alias Teiserver.Protocols.SpringOut
-  alias Teiserver.Account
-  alias Phoenix.PubSub
-
   @spec do_handle(String.t(), String.t(), String.t() | nil, map()) :: map()
-  def do_handle("create_new_party", _, msg_id, state) when not is_nil(state.party_id) do
+  def do_handle("create_new_party", _data, msg_id, state) when not is_nil(state.party_id) do
     # bit meh to do that in the protocol layer, but there isn't really another
     # place, and the whole thing is EOL
     SpringOut.reply(
@@ -17,7 +19,7 @@ defmodule Teiserver.Protocols.Spring.PartyIn do
     )
   end
 
-  def do_handle("create_new_party", _, msg_id, state) do
+  def do_handle("create_new_party", _data, msg_id, state) do
     party = Account.create_party(state.user.id)
 
     :ok = PubSub.subscribe(Teiserver.PubSub, "teiserver_party:#{party.id}")
@@ -37,7 +39,7 @@ defmodule Teiserver.Protocols.Spring.PartyIn do
     cmd_id = "c.party.invite_to_party"
 
     with [username] <- String.split(data) |> Enum.map(&String.trim/1),
-         user when not is_nil(user) <- Teiserver.Account.get_user_by_name(username),
+         user when not is_nil(user) <- UserCacheLib.get_user_by_name(username),
          # this check isn't great, it should be done in the party server
          # which is the source of truth for parties, but I'm taking a shortcut
          :ok <- if(state.party_id != nil, do: :ok, else: :not_in_party),
@@ -55,7 +57,7 @@ defmodule Teiserver.Protocols.Spring.PartyIn do
       :no_client ->
         SpringOut.reply(:no, {cmd_id, "msg=user not connected"}, msg_id, state)
 
-      _ ->
+      _other ->
         SpringOut.reply(
           :no,
           {cmd_id, "msg=expected party_id username but could not parse"},
@@ -75,7 +77,7 @@ defmodule Teiserver.Protocols.Spring.PartyIn do
       {false, reason} ->
         SpringOut.reply(:no, {cmd_id, "msg=#{reason}"}, msg_id, state)
 
-      _ ->
+      _other ->
         SpringOut.reply(
           :no,
           {cmd_id, "msg=expected party_id in argument but could not parse"},
@@ -88,14 +90,14 @@ defmodule Teiserver.Protocols.Spring.PartyIn do
   def do_handle("decline_invite_to_party", data, msg_id, state) do
     cmd_id = "c.party.decline_invite_to_party"
 
-    # credo:disable-for-next-line Credo.Check.Readability.WithSingleClause
-    with [party_id] <- String.split(data) |> Enum.map(&String.trim/1) do
-      # no need to unsubscribe here because it'll be done when handling the
-      # :invite_cancelled event
-      Account.cancel_party_invite(party_id, state.user.id)
-      SpringOut.reply(:okay, cmd_id, msg_id, state)
-    else
-      _ ->
+    case String.split(data) |> Enum.map(&String.trim/1) do
+      [party_id] ->
+        # no need to unsubscribe here because it'll be done when handling the
+        # :invite_cancelled event
+        Account.cancel_party_invite(party_id, state.user.id)
+        SpringOut.reply(:okay, cmd_id, msg_id, state)
+
+      _other ->
         SpringOut.reply(
           :no,
           {cmd_id, "msg=expected party_id in argument but could not parse"},
@@ -124,7 +126,7 @@ defmodule Teiserver.Protocols.Spring.PartyIn do
     cmd_id = "c.party.cancel_invite_to_party"
 
     with [username] <- String.split(data) |> Enum.map(&String.trim/1),
-         user when not is_nil(user) <- Teiserver.Account.get_user_by_name(username),
+         user when not is_nil(user) <- UserCacheLib.get_user_by_name(username),
          :ok <- if(state.party_id != nil, do: :ok, else: :not_in_party),
          :ok <- if(Account.client_exists?(user.id), do: :ok, else: :no_client) do
       party_id = state.party_id
@@ -146,7 +148,7 @@ defmodule Teiserver.Protocols.Spring.PartyIn do
       :no_client ->
         SpringOut.reply(:no, {cmd_id, "msg=user not connected"}, msg_id, state)
 
-      _ ->
+      _other ->
         SpringOut.reply(
           :no,
           {cmd_id, "msg=expected username in argument but could not parse"},
@@ -156,7 +158,7 @@ defmodule Teiserver.Protocols.Spring.PartyIn do
     end
   end
 
-  def do_handle(msg, _, _msg_id, state) do
+  def do_handle(msg, _data, _msg_id, state) do
     Logger.debug("Unhandled party message: #{msg}")
     state
   end
@@ -207,7 +209,7 @@ defmodule Teiserver.Protocols.Spring.PartyIn do
         %{event: :updated_values, party_id: party_id, operation: {:member_added, userid}},
         state
       ) do
-    case Teiserver.Account.get_user_by_id(userid) do
+    case UserCacheLib.get_user_by_id(userid) do
       nil -> state
       user -> SpringOut.reply(:party, :member_added, {party_id, user.name}, message_id(), state)
     end
@@ -222,7 +224,7 @@ defmodule Teiserver.Protocols.Spring.PartyIn do
         :ok = PubSub.unsubscribe(Teiserver.PubSub, "teiserver_party:#{party_id}")
       end
 
-      case Teiserver.Account.get_user_by_id(user_id) do
+      case UserCacheLib.get_user_by_id(user_id) do
         nil ->
           state
 
@@ -238,7 +240,7 @@ defmodule Teiserver.Protocols.Spring.PartyIn do
         %{event: :updated_values, party_id: party_id, operation: {:member_removed, userid}},
         state
       ) do
-    case Teiserver.Account.get_user_by_id(userid) do
+    case UserCacheLib.get_user_by_id(userid) do
       nil ->
         state
 
@@ -251,7 +253,7 @@ defmodule Teiserver.Protocols.Spring.PartyIn do
         %{event: :updated_values, party_id: party_id, operation: {:invite_created, userid}},
         state
       ) do
-    case Teiserver.Account.get_user_by_id(userid) do
+    case UserCacheLib.get_user_by_id(userid) do
       nil ->
         state
 
@@ -267,7 +269,7 @@ defmodule Teiserver.Protocols.Spring.PartyIn do
     :ok = PubSub.unsubscribe(Teiserver.PubSub, "teiserver_party:#{party_id}")
 
     # chobby would like to receive a member_left message when the last member leaves
-    case Teiserver.Account.get_user_by_id(userid) do
+    case UserCacheLib.get_user_by_id(userid) do
       nil ->
         state
 
@@ -281,7 +283,7 @@ defmodule Teiserver.Protocols.Spring.PartyIn do
     state
   end
 
-  defp message_id() do
+  defp message_id do
     "##{:rand.uniform(1_000_000)}"
   end
 end

@@ -1,18 +1,20 @@
 defmodule TeiserverWeb.Blog.Blog.ShowLiveTest do
   @moduledoc false
+
+  alias Teiserver.Helpers.GeneralTestLib
+  alias Teiserver.TeiserverTestLib
+
   use TeiserverWeb.ConnCase
 
   import Phoenix.LiveViewTest
   import Teiserver.MicroblogFixtures
-  alias Central.Helpers.GeneralTestLib
-  alias Teiserver.{TeiserverTestLib}
 
-  defp auth(_) do
+  defp auth(_context) do
     GeneralTestLib.conn_setup()
     |> TeiserverTestLib.conn_setup()
   end
 
-  defp filler_post(_) do
+  defp filler_post(_context) do
     tag1 = tag_fixture()
     tag2 = tag_fixture()
 
@@ -46,7 +48,8 @@ defmodule TeiserverWeb.Blog.Blog.ShowLiveTest do
       # Now click a poll button, should have no effect because we're not logged in
       render_click(show_live, "poll-choice", %{"choice" => "PollOpt 1"})
 
-      # Due to the delays in various pub-sub parts this won't update right away so we'll just call the page again
+      # Due to the delays in various pub-sub parts this won't
+      # update right away so we'll just call the page again
       {:ok, _show_live, html} = live(conn, ~p"/microblog/show/#{post.id}")
 
       refute html =~ "Vote in the poll"

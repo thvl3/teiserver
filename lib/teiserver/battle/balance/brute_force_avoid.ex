@@ -12,8 +12,9 @@ defmodule Teiserver.Battle.Balance.BruteForceAvoid do
 
   This is not a balance algorithm that is callable players. It's a lib that can be used by another balance algorithm.
   """
-  alias Teiserver.Config
   alias Teiserver.Battle.Balance.BruteForceAvoidTypes, as: BF
+  alias Teiserver.Config
+  alias Teiserver.Helpers.Combi
   require Integer
 
   # Parties will be split if team diff is too large. It either uses absolute value or percentage
@@ -46,7 +47,7 @@ defmodule Teiserver.Battle.Balance.BruteForceAvoid do
 
   @spec potential_teams(integer()) :: [integer()]
   def potential_teams(num_players) do
-    Teiserver.Helpers.Combi.get_single_teams(num_players)
+    Combi.get_single_teams(num_players)
   end
 
   # Parties/avoids will be ignored if the team rating diff is too large
@@ -66,11 +67,11 @@ defmodule Teiserver.Battle.Balance.BruteForceAvoid do
 
   @spec get_captain_rating([BF.player()]) :: any()
   def get_captain_rating(team) do
-    if length(team) > 0 do
+    if Enum.empty?(team) do
+      0
+    else
       captain = Enum.max_by(team, fn player -> player.rating end, &>=/2)
       captain.rating
-    else
-      0
     end
   end
 
@@ -89,12 +90,10 @@ defmodule Teiserver.Battle.Balance.BruteForceAvoid do
     num_teams = 2
 
     max_team_diff_penalty =
-      cond do
-        rating_diff_penalty > get_max_team_diff(both_team_rating, num_teams) ->
-          @max_team_diff_importance
-
-        true ->
-          0
+      if rating_diff_penalty > get_max_team_diff(both_team_rating, num_teams) do
+        @max_team_diff_importance
+      else
+        0
       end
 
     # If max_team_diff_penalty is non zero don't even bother calculating avoid and party penalty
@@ -105,7 +104,7 @@ defmodule Teiserver.Battle.Balance.BruteForceAvoid do
           {count_broken_avoids(first_team, avoids) * @avoid_importance,
            count_broken_parties(first_team, parties) * @party_importance}
 
-        _ ->
+        _nonzero ->
           {0, 0}
       end
 
@@ -132,12 +131,12 @@ defmodule Teiserver.Battle.Balance.BruteForceAvoid do
 
   def count_broken_parties(first_team, parties) do
     Enum.count(parties, fn party ->
-      is_party_broken?(first_team, party)
+      party_broken?(first_team, party)
     end)
   end
 
-  @spec is_party_broken?([BF.player()], [String.t()]) :: any()
-  def is_party_broken?(team, party) do
+  @spec party_broken?([BF.player()], [String.t()]) :: any()
+  def party_broken?(team, party) do
     count =
       Enum.count(party, fn x ->
         Enum.any?(team, fn y ->
@@ -157,12 +156,12 @@ defmodule Teiserver.Battle.Balance.BruteForceAvoid do
 
   def count_broken_avoids(first_team, avoids) do
     Enum.count(avoids, fn avoid ->
-      is_avoid_broken?(first_team, avoid)
+      avoid_broken?(first_team, avoid)
     end)
   end
 
-  @spec is_avoid_broken?([BF.player()], [[any()]]) :: any()
-  def is_avoid_broken?(team, avoids) do
+  @spec avoid_broken?([BF.player()], [[any()]]) :: any()
+  def avoid_broken?(team, avoids) do
     count =
       Enum.count(avoids, fn x ->
         Enum.any?(team, fn y ->
@@ -170,12 +169,8 @@ defmodule Teiserver.Battle.Balance.BruteForceAvoid do
         end)
       end)
 
-    cond do
-      # One person from avoid on this team. The other must be on other team. Avoid is respected.
-      count == 1 -> false
-      # Otherwise avoid is broken
-      true -> true
-    end
+    # One person from avoid on this team. The other must be on other team. Avoid is respected.
+    count != 1
   end
 
   defp get_team_rating(players) do

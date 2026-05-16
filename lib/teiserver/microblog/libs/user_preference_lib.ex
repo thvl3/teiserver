@@ -1,7 +1,9 @@
 defmodule Teiserver.Microblog.UserPreferenceLib do
   @moduledoc false
+
+  alias Teiserver.Microblog.UserPreference
+  alias Teiserver.Microblog.UserPreferenceQueries
   use TeiserverWeb, :library_newform
-  alias Teiserver.Microblog.{UserPreference, UserPreferenceQueries}
 
   # Functions
   @spec icon :: String.t()
@@ -11,7 +13,7 @@ defmodule Teiserver.Microblog.UserPreferenceLib do
   def colours, do: :primary2
 
   @spec tag_mode_list() :: [String.t()]
-  def tag_mode_list() do
+  def tag_mode_list do
     [
       "Block",
       "Filter",

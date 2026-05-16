@@ -1,18 +1,20 @@
 defmodule TeiserverWeb.Microblog.Blog.IndexLiveTest do
   @moduledoc false
+
+  alias Teiserver.Helpers.GeneralTestLib
+  alias Teiserver.TeiserverTestLib
+
   use TeiserverWeb.ConnCase
 
   import Phoenix.LiveViewTest
   import Teiserver.MicroblogFixtures
-  alias Central.Helpers.GeneralTestLib
-  alias Teiserver.{TeiserverTestLib}
 
-  defp auth_setup(_) do
+  defp auth_setup(_context) do
     GeneralTestLib.conn_setup()
     |> TeiserverTestLib.conn_setup()
   end
 
-  defp filler_posts(_) do
+  defp filler_posts(_context) do
     tag1 = tag_fixture()
     tag2 = tag_fixture()
     tag3 = tag_fixture()
@@ -53,7 +55,6 @@ defmodule TeiserverWeb.Microblog.Blog.IndexLiveTest do
   describe "Anon Index" do
     setup [:filler_posts]
 
-    @tag :needs_attention
     test "viewing the blog", %{conn: conn, post1: post1} do
       {:ok, index_live, html} = live(conn, ~p"/microblog")
 
@@ -93,7 +94,6 @@ defmodule TeiserverWeb.Microblog.Blog.IndexLiveTest do
   describe "Index" do
     setup [:filler_posts, :auth_setup]
 
-    @tag :needs_attention
     test "User without preferences", %{conn: conn, user: _user, post1: post1} do
       {:ok, index_live, html} = live(conn, ~p"/microblog")
 
@@ -129,7 +129,6 @@ defmodule TeiserverWeb.Microblog.Blog.IndexLiveTest do
       refute html =~ "Post 3 fold line"
     end
 
-    @tag :needs_attention
     test "Including preferences", %{conn: conn, user: user, post3: post3, tag1: tag1} do
       user_preference_fixture(%{
         user_id: user.id,

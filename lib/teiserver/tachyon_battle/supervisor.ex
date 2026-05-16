@@ -1,16 +1,17 @@
 defmodule Teiserver.TachyonBattle.Supervisor do
   @moduledoc false
 
-  use DynamicSupervisor
-  alias Teiserver.TachyonBattle.Types, as: T
   alias Teiserver.TachyonBattle.Battle
+  alias Teiserver.TachyonBattle.Types, as: T
+
+  use DynamicSupervisor
 
   def start_link(init_arg) do
     DynamicSupervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
   end
 
-  @impl true
-  def init(_) do
+  @impl DynamicSupervisor
+  def init(_arg) do
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 

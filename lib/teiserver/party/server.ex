@@ -3,19 +3,20 @@ defmodule Teiserver.Party.Server do
   transient state machine to hold a party state and mediate player interactions
   """
 
-  @behaviour :gen_statem
+  alias Plug.Crypto
+  alias Teiserver.Config
+  alias Teiserver.Data.Types, as: T
+  alias Teiserver.Helpers.MonitorCollection, as: MC
+  alias Teiserver.KvStore
+  alias Teiserver.Matchmaking
+  alias Teiserver.Messaging
+  alias Teiserver.Party
+  alias Teiserver.Player
+  alias Teiserver.Tachyon
 
   require Logger
 
-  alias Teiserver.Party
-  alias Teiserver.Player
-  alias Teiserver.Matchmaking
-  alias Teiserver.Messaging
-  alias Teiserver.Tachyon
-  alias Teiserver.Data.Types, as: T
-  alias Teiserver.Helpers.MonitorCollection, as: MC
-
-  alias Teiserver.Data.Types, as: T
+  @behaviour :gen_statem
 
   @type id :: String.t()
   @type state :: %{
@@ -40,23 +41,23 @@ defmodule Teiserver.Party.Server do
   @default_call_timeout 5000
 
   @spec gen_party_id() :: id()
-  def gen_party_id(), do: UUID.uuid4()
+  def gen_party_id, do: UUID.uuid4()
 
   @doc """
   What is the site config key holding the max size of a party
   """
-  def max_size_key(), do: "party.max-size"
+  def max_size_key, do: "party.max-size"
 
   @doc """
   What is the site config key holding how long an invite is valid for (in seconds)
   """
-  def invite_valid_duration_key(), do: "party.invite-valid-duration-s"
+  def invite_valid_duration_key, do: "party.invite-valid-duration-s"
 
   @spec leave_party(id(), T.userid()) :: :ok | {:error, :invalid_party | :not_a_member}
   def leave_party(party_id, user_id) do
-    :gen_statem.call(via_tuple(party_id), {:leave, user_id}, @default_call_timeout)
+    via_tuple(party_id) |> :gen_statem.call({:leave, user_id}, @default_call_timeout)
   catch
-    :exit, {:noproc, _} -> {:error, :invalid_party}
+    :exit, {:noproc, _details} -> {:error, :invalid_party}
   end
 
   @doc """
@@ -66,9 +67,9 @@ defmodule Teiserver.Party.Server do
   @spec rejoin(id(), T.userid(), pid() | nil) ::
           {:ok, state()} | {:error, :invalid_party | :not_a_member}
   def rejoin(party_id, user_id, pid \\ self()) do
-    :gen_statem.call(via_tuple(party_id), {:rejoin, user_id, pid}, @default_call_timeout)
+    via_tuple(party_id) |> :gen_statem.call({:rejoin, user_id, pid}, @default_call_timeout)
   catch
-    :exit, {:noproc, _} -> {:error, :invalid_party}
+    :exit, {:noproc, _details} -> {:error, :invalid_party}
   end
 
   @doc """
@@ -77,29 +78,29 @@ defmodule Teiserver.Party.Server do
   @spec create_invite(id(), T.userid()) ::
           {:ok, state()} | {:error, :invalid_party | :already_invited | :party_at_capacity}
   def create_invite(party_id, user_id, pid \\ self()) do
-    :gen_statem.call(via_tuple(party_id), {:create_invite, user_id, pid}, @default_call_timeout)
+    via_tuple(party_id) |> :gen_statem.call({:create_invite, user_id, pid}, @default_call_timeout)
   catch
-    :exit, {:noproc, _} -> {:error, :invalid_party}
+    :exit, {:noproc, _details} -> {:error, :invalid_party}
   end
 
   @spec accept_invite(id(), T.userid()) ::
           {:ok, state()} | {:error, :invalid_party | :not_invited}
   def accept_invite(party_id, user_id) do
-    :gen_statem.call(
-      via_tuple(party_id),
+    via_tuple(party_id)
+    |> :gen_statem.call(
       {:accept_invite, user_id, self()},
       @default_call_timeout
     )
   catch
-    :exit, {:noproc, _} -> {:error, :invalid_party}
+    :exit, {:noproc, _details} -> {:error, :invalid_party}
   end
 
   @spec decline_invite(id(), T.userid()) ::
           {:ok, state()} | {:error, :invalid_party | :not_invited}
   def decline_invite(party_id, user_id) do
-    :gen_statem.call(via_tuple(party_id), {:decline_invite, user_id}, @default_call_timeout)
+    via_tuple(party_id) |> :gen_statem.call({:decline_invite, user_id}, @default_call_timeout)
   catch
-    :exit, {:noproc, _} -> {:error, :invalid_party}
+    :exit, {:noproc, _details} -> {:error, :invalid_party}
   end
 
   @doc """
@@ -108,9 +109,9 @@ defmodule Teiserver.Party.Server do
   @spec cancel_invite(id(), T.userid()) ::
           {:ok, state()} | {:error, :invalid_party | :not_in_party | :not_invited}
   def cancel_invite(party_id, user_id) do
-    :gen_statem.call(via_tuple(party_id), {:cancel_invite, user_id}, @default_call_timeout)
+    via_tuple(party_id) |> :gen_statem.call({:cancel_invite, user_id}, @default_call_timeout)
   catch
-    :exit, {:noproc, _} -> {:error, :invalid_party}
+    :exit, {:noproc, _details} -> {:error, :invalid_party}
   end
 
   @doc """
@@ -120,13 +121,13 @@ defmodule Teiserver.Party.Server do
   @spec kick_user(id(), user_kicking :: T.userid(), kicked_user :: T.userid()) ::
           {:ok, state()} | {:error, :invalid_party | :invalid_target | :not_a_member}
   def kick_user(party_id, actor_id, target_id) do
-    :gen_statem.call(
-      via_tuple(party_id),
+    via_tuple(party_id)
+    |> :gen_statem.call(
       {:kick_user, actor_id, target_id},
       @default_call_timeout
     )
   catch
-    :exit, {:noproc, _} -> {:error, :invalid_party}
+    :exit, {:noproc, _details} -> {:error, :invalid_party}
   end
 
   @doc """
@@ -134,9 +135,9 @@ defmodule Teiserver.Party.Server do
   """
   @spec get_state(id()) :: state() | nil
   def get_state(party_id) do
-    :gen_statem.call(via_tuple(party_id), :get_state, @default_call_timeout)
+    via_tuple(party_id) |> :gen_statem.call(:get_state, @default_call_timeout)
   catch
-    :exit, {:noproc, _} -> nil
+    :exit, {:noproc, _details} -> nil
   end
 
   @doc """
@@ -153,13 +154,13 @@ defmodule Teiserver.Party.Server do
   @spec join_queues(id(), [{Matchmaking.queue_id(), version :: String.t()}]) ::
           :ok | {:error, reason :: term()}
   def join_queues(party_id, queues) do
-    :gen_statem.call(
-      via_tuple(party_id),
+    via_tuple(party_id)
+    |> :gen_statem.call(
       {:join_matchmaking_queues, queues},
       @default_call_timeout
     )
   catch
-    :exit, {:noproc, _} -> {:error, :invalid_party}
+    :exit, {:noproc, _details} -> {:error, :invalid_party}
   end
 
   @doc """
@@ -169,22 +170,22 @@ defmodule Teiserver.Party.Server do
   """
   @spec matchmaking_notify_cancel(id()) :: :ok
   def matchmaking_notify_cancel(party_id) do
-    :gen_statem.cast(via_tuple(party_id), :lost_matchmaking_queue)
+    via_tuple(party_id) |> :gen_statem.cast(:lost_matchmaking_queue)
   end
 
   @spec send_message(id(), T.userid(), String.t()) ::
           :ok | {:error, :invalid_request, reason :: term()}
   def send_message(party_id, from_id, msg_content) do
-    :gen_statem.call(
-      via_tuple(party_id),
+    via_tuple(party_id)
+    |> :gen_statem.call(
       {:send_message, from_id, msg_content},
       @default_call_timeout
     )
   catch
-    :exit, {:noproc, _} -> {:error, :invalid_request, "invalid party"}
+    :exit, {:noproc, _details} -> {:error, :invalid_request, "invalid party"}
   end
 
-  def child_spec({party_id, _} = args) do
+  def child_spec({party_id, _init_arg} = args) do
     %{
       id: via_tuple(party_id),
       start: {__MODULE__, :start_link, [args]},
@@ -192,8 +193,8 @@ defmodule Teiserver.Party.Server do
     }
   end
 
-  def start_link({party_id, _} = args) do
-    :gen_statem.start_link(via_tuple(party_id), __MODULE__, args, [])
+  def start_link({party_id, _init_arg} = args) do
+    via_tuple(party_id) |> :gen_statem.start_link(__MODULE__, args, [])
   end
 
   ################################################################################
@@ -203,7 +204,7 @@ defmodule Teiserver.Party.Server do
   ################################################################################
 
   @impl :gen_statem
-  def callback_mode(), do: :handle_event_function
+  def callback_mode, do: :handle_event_function
 
   @impl :gen_statem
   def init({party_id, {:user, user_id, creator_pid}}) do
@@ -231,12 +232,12 @@ defmodule Teiserver.Party.Server do
     Logger.metadata(actor_type: :party, actor_id: party_id)
     Logger.debug("Restoring party from snapshot")
 
-    snapshot = :erlang.binary_to_term(serialized_state)
+    snapshot = Crypto.non_executable_binary_to_term(serialized_state, [:safe])
     now = DateTime.utc_now()
 
     expired_invite_ids =
-      Enum.filter(snapshot.invited, fn {_, i} -> not DateTime.before?(now, i.valid_until) end)
-      |> Enum.map(fn {id, _} -> id end)
+      Enum.filter(snapshot.invited, fn {_id, i} -> not DateTime.before?(now, i.valid_until) end)
+      |> Enum.map(fn {id, _invite} -> id end)
       |> MapSet.new()
 
     invited =
@@ -271,19 +272,19 @@ defmodule Teiserver.Party.Server do
 
   def handle_event({:call, from}, {:leave, user_id}, :running, data) do
     case Map.pop(data.members, user_id) do
-      {nil, _} ->
+      {nil, _members} ->
         {:keep_state, data, [{:reply, from, {:error, :not_a_member}}]}
 
-      {_, rest} when map_size(rest) == 0 ->
+      {_member, rest} when map_size(rest) == 0 ->
         {:stop_and_reply, :normal, [{:reply, from, :ok}], %{data | members: %{}} |> bump()}
 
-      {_, new_members} ->
+      {_member, new_members} ->
         new_data =
           %{data | members: new_members}
           |> bump()
           |> Map.update!(:monitors, &MC.demonitor_by_val(&1, user_id))
 
-        for id <- Stream.concat(Map.keys(data.invited), Map.keys(data.members)) do
+        for id <- Map.keys(data.invited) |> Stream.concat(Map.keys(data.members)) do
           Player.party_notify_updated(id, new_data)
         end
 
@@ -299,7 +300,7 @@ defmodule Teiserver.Party.Server do
     invited = Map.get(data.invited, user_id)
     member = Map.get(data.members, user_id)
 
-    max_size = Teiserver.Config.get_site_config_cache(max_size_key())
+    max_size = Config.get_site_config_cache(max_size_key())
 
     cond do
       invited != nil || member != nil ->
@@ -309,7 +310,7 @@ defmodule Teiserver.Party.Server do
         {:keep_state, data, [{:reply, from, {:error, :party_at_capacity}}]}
 
       true ->
-        valid_duration = Teiserver.Config.get_site_config_cache(invite_valid_duration_key())
+        valid_duration = Config.get_site_config_cache(invite_valid_duration_key())
         valid_until = DateTime.add(DateTime.utc_now(), valid_duration, :second)
         tref = :timer.send_after(valid_duration * 1000, {:invite_timeout, user_id})
 
@@ -327,7 +328,7 @@ defmodule Teiserver.Party.Server do
           |> bump()
 
         # don't send the updated event to the newly invited player
-        for id <- Stream.concat(Map.keys(data.invited), Map.keys(data.members)) do
+        for id <- Map.keys(data.invited) |> Stream.concat(Map.keys(data.members)) do
           Player.party_notify_updated(id, new_data)
         end
 
@@ -337,10 +338,10 @@ defmodule Teiserver.Party.Server do
 
   def handle_event({:call, from}, {:accept_invite, user_id, user_pid}, :running, data) do
     case Map.pop(data.invited, user_id) do
-      {nil, _} ->
+      {nil, _invited} ->
         {:keep_state, data, [{:reply, from, {:error, :not_invited}}]}
 
-      {_, rest} ->
+      {_invite, rest} ->
         data =
           data
           |> bump()
@@ -354,7 +355,7 @@ defmodule Teiserver.Party.Server do
 
   def handle_event({:call, from}, {:decline_invite, user_id}, :running, data) do
     case Map.pop(data.invited, user_id) do
-      {nil, _} ->
+      {nil, _invited} ->
         {:keep_state, data, [{:reply, from, {:error, :not_invited}}]}
 
       {invited, rest} ->
@@ -390,10 +391,10 @@ defmodule Teiserver.Party.Server do
     {target, rest} = Map.pop(data.members, target_id)
 
     case {member?, target} do
-      {false, _} ->
+      {false, _target} ->
         {:keep_state, data, [{:reply, from, {:error, :not_a_member}}]}
 
-      {_, nil} ->
+      {_is_member, nil} ->
         {:keep_state, data, [{:reply, from, {:error, :invalid_target}}]}
 
       {true, _member} ->
@@ -466,7 +467,7 @@ defmodule Teiserver.Party.Server do
       nil ->
         {:keep_state, data, [{:reply, from, {:error, :invalid_request, :not_a_party_member}}]}
 
-      _ ->
+      _member ->
         msg =
           Messaging.new(
             msg_content,
@@ -549,13 +550,13 @@ defmodule Teiserver.Party.Server do
         {:member, user_id} when is_map_key(data.members, user_id) ->
           Map.update!(data, :ids_to_rejoin, &MapSet.put(&1, user_id))
 
-        _ ->
+        _other ->
           data
       end
 
     case state do
       :running -> {:next_state, :shutting_down, data}
-      _ -> {:keep_state, data}
+      _other_state -> {:keep_state, data}
     end
   end
 
@@ -586,15 +587,15 @@ defmodule Teiserver.Party.Server do
       else: {:keep_state, data}
   end
 
-  def handle_event({:call, from}, _, :shutting_down, data) do
+  def handle_event({:call, from}, _event, :shutting_down, data) do
     {:keep_state, data, [{:reply, from, {:error, :party_shutting_down}}]}
   end
 
-  def handle_event({:call, _from}, _, :starting_up, data) do
+  def handle_event({:call, _from}, _event, :starting_up, data) do
     {:keep_state, data, [:postpone]}
   end
 
-  def handle_event(:info, _, :starting_up, data) do
+  def handle_event(:info, _event, :starting_up, data) do
     {:keep_state, data, [:postpone]}
   end
 
@@ -626,7 +627,7 @@ defmodule Teiserver.Party.Server do
           end)
           |> :erlang.term_to_binary()
 
-        Teiserver.KvStore.put("party", data.id, to_save)
+        KvStore.put("party", data.id, to_save)
 
       true ->
         nil
@@ -636,7 +637,7 @@ defmodule Teiserver.Party.Server do
   def terminate(_reason, _state, _data), do: nil
 
   defp notify_updated(data) do
-    for id <- Stream.concat(Map.keys(data.invited), Map.keys(data.members)) do
+    for id <- Map.keys(data.invited) |> Stream.concat(Map.keys(data.members)) do
       Player.party_notify_updated(id, Map.drop(data, [:monitors]))
     end
 

@@ -1,7 +1,7 @@
 defmodule TeiserverWeb.Report.RatingController do
-  use TeiserverWeb, :controller
   alias Teiserver.Account
   alias Teiserver.Battle.BalanceLib
+  use TeiserverWeb, :controller
 
   plug(AssignPlug,
     site_menu_active: "teiserver_report",
@@ -9,6 +9,7 @@ defmodule TeiserverWeb.Report.RatingController do
   )
 
   plug Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Staff.Moderator,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}
@@ -39,13 +40,13 @@ defmodule TeiserverWeb.Report.RatingController do
 
     found_players =
       lookup_result
-      |> Enum.filter(fn {_, r} -> r != nil end)
-      |> Enum.map(fn {n, _} -> n end)
+      |> Enum.filter(fn {_name, r} -> r != nil end)
+      |> Enum.map(fn {n, _id} -> n end)
 
     missing_names =
       lookup_result
-      |> Enum.filter(fn {_, r} -> r == nil end)
-      |> Enum.map(fn {n, _} -> n end)
+      |> Enum.filter(fn {_name, r} -> r == nil end)
+      |> Enum.map(fn {n, _id} -> n end)
 
     player_ids =
       lookup_result
@@ -53,11 +54,12 @@ defmodule TeiserverWeb.Report.RatingController do
       |> Enum.reject(fn userid -> userid == nil end)
 
     rating_type =
-      cond do
-        Enum.count(player_ids) == 2 -> "Duel"
-        # credo:disable-for-next-line Credo.Check.Design.TagTODO
-        # TODO Should probably get rating based on team size instad
-        true -> "Large Team"
+      if Enum.count(player_ids) == 2 do
+        "Duel"
+
+        # TODO Should probably get rating based on team size instead
+      else
+        "Large Team"
       end
 
     rating_lookup =
@@ -78,7 +80,7 @@ defmodule TeiserverWeb.Report.RatingController do
 
     user_lookup =
       lookup_result
-      |> Enum.reject(fn {_, id} -> id == nil end)
+      |> Enum.reject(fn {_name, id} -> id == nil end)
       |> Map.new(fn {name, id} -> {id, name} end)
 
     conn

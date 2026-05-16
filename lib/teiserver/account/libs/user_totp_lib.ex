@@ -1,7 +1,9 @@
 defmodule Teiserver.Account.TOTPLib do
-  use TeiserverWeb, :library
-  alias Teiserver.Account.{User, TOTP}
+  @moduledoc false
+  alias Teiserver.Account.TOTP
+  alias Teiserver.Account.User
   alias Teiserver.Data.Types, as: T
+  use TeiserverWeb, :library
 
   @allowed_invalid_attempts 5
 
@@ -105,7 +107,7 @@ defmodule Teiserver.Account.TOTPLib do
   def set_last_used(user_id, last_used) do
     if get_user_totp_status(user_id) == :active do
       case set_totp(user_id, %{user_id: user_id, last_used: last_used}) do
-        {:ok, _} ->
+        {:ok, _totp} ->
           :ok
 
         {:error, changeset} ->
@@ -121,14 +123,14 @@ defmodule Teiserver.Account.TOTPLib do
     case get_user_totp(user_id) do
       {:active, totp} ->
         case Repo.delete(totp) do
-          {:ok, _} ->
+          {:ok, _totp} ->
             :ok
 
           {:error, changeset} ->
             {:error, changeset}
         end
 
-      {:inactive, _} ->
+      {:inactive, _user} ->
         :ok
     end
   end
@@ -179,21 +181,21 @@ defmodule Teiserver.Account.TOTPLib do
   @spec validate_totp(User.t(), String.t(), DateTime.t()) ::
           :ok | {:error, :invalid | :used}
   defp validate_totp(secret, otp, time, since: last_used) do
-    cond do
-      NimbleTOTP.valid?(secret, otp, time: time, since: last_used) ->
-        :ok
-
-      true ->
-        # Second test is needed. If :since is provided and NimbleTOTP.valid? returns false, it could either be that
-        # the OTP is wrong, or that it got used. To figure out which one it is, we need to test a second time without
-        # since, as a false this time indicates that the OTP is invalid, and a True that it got used
-        cond do
-          NimbleTOTP.valid?(secret, otp, time: time) ->
-            {:error, :used}
-
-          true ->
-            {:error, :invalid}
-        end
+    if NimbleTOTP.valid?(secret, otp, time: time, since: last_used) do
+      :ok
+    else
+      # Second test is needed. If :since is provided and
+      # NimbleTOTP.valid? returns false, it could either
+      # be that the OTP is wrong, or that it got used. To
+      # figure out which one it is, we need to test a
+      # second time without since, as a false this time
+      # indicates that the OTP is invalid, and a True
+      # that it got used
+      if NimbleTOTP.valid?(secret, otp, time: time) do
+        {:error, :used}
+      else
+        {:error, :invalid}
+      end
     end
   end
 

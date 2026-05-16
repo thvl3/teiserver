@@ -7,9 +7,12 @@ defmodule Mix.Tasks.Teiserver.FakePlaytime do
   mix teiserver.fake_playtime
   """
 
+  alias Teiserver.Account
+  alias Teiserver.CacheUser
+
   use Mix.Task
+
   require Logger
-  alias Teiserver.{Account, CacheUser}
 
   def run(_args) do
     Application.ensure_all_started(:teiserver)
@@ -42,7 +45,7 @@ defmodule Mix.Tasks.Teiserver.FakePlaytime do
     })
   end
 
-  defp random_playtime() do
+  defp random_playtime do
     hours =
       case get_player_experience() do
         :just_installed -> Enum.random(0..4)
@@ -60,7 +63,7 @@ defmodule Mix.Tasks.Teiserver.FakePlaytime do
       0 -> :just_installed
       1 -> :beginner
       2 -> :average
-      _ -> :pro
+      _other -> :pro
     end
   end
 end

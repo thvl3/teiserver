@@ -1,38 +1,44 @@
 defmodule TeiserverWeb.Account.ProfileLive.Matches do
   @moduledoc false
+
+  alias Teiserver.Account
+  alias Teiserver.Account.UserLib
+  alias Teiserver.Battle
+  alias Teiserver.Config
+  alias Teiserver.Game
+  alias Teiserver.Plugs.CachePlug
+  alias TeiserverWeb.Account.ProfileLive.Overview
+  alias TeiserverWeb.Parsers.PaginationParams
   use TeiserverWeb, :live_view
-  alias Teiserver.{Account, Battle, Config, Game}
   import TeiserverWeb.PaginationComponents, only: [pagination: 1]
 
-  @impl true
+  @impl Phoenix.LiveView
   def mount(%{"userid" => userid_str}, _session, socket) do
     userid = String.to_integer(userid_str)
     user = Account.get_user_by_id(userid)
 
     socket =
-      cond do
-        user == nil ->
-          socket
-          |> put_flash(:info, "Unable to find that user")
-          |> redirect(to: ~p"/")
-
-        true ->
-          socket
-          |> Teiserver.Plugs.CachePlug.live_call()
-          |> assign(:tab, nil)
-          |> assign(:site_menu_active, "teiserver_account")
-          |> assign(:view_colour, Teiserver.Account.UserLib.colours())
-          |> assign(:user, user)
-          |> TeiserverWeb.Account.ProfileLive.Overview.get_relationships_and_permissions()
-          |> assign_pagination_defaults()
+      if is_nil(user) do
+        socket
+        |> put_flash(:info, "Unable to find that user")
+        |> redirect(to: ~p"/")
+      else
+        socket
+        |> CachePlug.live_call()
+        |> assign(:tab, nil)
+        |> assign(:site_menu_active, "teiserver_account")
+        |> assign(:view_colour, UserLib.colours())
+        |> assign(:user, user)
+        |> Overview.get_relationships_and_permissions()
+        |> assign_pagination_defaults()
       end
 
     {:ok, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_params(params, _url, socket) do
-    parsed = TeiserverWeb.Parsers.PaginationParams.parse_params(params)
+    parsed = PaginationParams.parse_params(params)
 
     socket =
       socket
@@ -43,7 +49,7 @@ defmodule TeiserverWeb.Account.ProfileLive.Matches do
     {:noreply, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_event(_string, _event, socket) do
     {:noreply, socket}
   end
@@ -86,7 +92,7 @@ defmodule TeiserverWeb.Account.ProfileLive.Matches do
       "Friends" -> :self in profile_permissions or :friend in profile_permissions
       "Any player" -> not Enum.any?(profile_permissions, &(&1 in [:block, :avoid, :ignore]))
       "Completely public" -> true
-      _ -> false
+      _other -> false
     end
   end
 
@@ -98,7 +104,7 @@ defmodule TeiserverWeb.Account.ProfileLive.Matches do
       "Friends" -> :self in profile_permissions or :friend in profile_permissions
       "Any player" -> not Enum.any?(profile_permissions, &(&1 in [:block, :avoid, :ignore]))
       "Completely public" -> true
-      _ -> false
+      _other -> false
     end
   end
 

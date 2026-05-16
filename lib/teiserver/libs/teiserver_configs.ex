@@ -1,5 +1,11 @@
 defmodule Teiserver.TeiserverConfigs do
   @moduledoc false
+
+  alias Teiserver.Account
+  alias Teiserver.Lobby
+  alias Teiserver.Party
+  alias Teiserver.Tachyon
+
   import Teiserver.Config, only: [add_site_config_type: 1]
 
   @spec teiserver_configs :: any
@@ -67,15 +73,6 @@ defmodule Teiserver.TeiserverConfigs do
       description:
         "When enabled, players will be offered the chance to bestow accolades to each other.",
       default: true
-    })
-
-    add_site_config_type(%{
-      key: "teiserver.Inform of new accolades",
-      section: "Accolades",
-      type: "boolean",
-      permissions: ["Server"],
-      description: "When set to true, players will be informed when they get a new accolade",
-      default: false
     })
 
     add_site_config_type(%{
@@ -153,7 +150,7 @@ defmodule Teiserver.TeiserverConfigs do
     })
   end
 
-  defp moderation_configs() do
+  defp moderation_configs do
     add_site_config_type(%{
       key: "teiserver.Warning acknowledge prompt",
       section: "Moderation",
@@ -200,23 +197,37 @@ defmodule Teiserver.TeiserverConfigs do
     })
   end
 
-  defp legacy_protocol_configs() do
+  defp legacy_protocol_configs do
     add_site_config_type(%{
-      key: "teiserver.Spring flood rate limit count",
+      key: "teiserver.Spring rate limit per minute",
       section: "Legacy protocol",
       type: "integer",
       permissions: ["Admin"],
-      description: "The number of commands required to trip flood protection for Spring",
-      default: 20
+      description: "Maximum commands per minute per connection.",
+      default: 200
     })
 
     add_site_config_type(%{
-      key: "teiserver.Spring flood rate window size",
+      key: "teiserver.Spring telemetry rate limit per minute",
       section: "Legacy protocol",
       type: "integer",
       permissions: ["Admin"],
-      description: "The size of the window in seconds for flood protection to trip for Spring",
-      default: 6
+      description:
+        "Maximum unauthenticated telemetry commands per minute per connection. " <>
+          "Authenticated users are not affected by this limit.",
+      default: 30
+    })
+
+    add_site_config_type(%{
+      key: "teiserver.Spring max message buffer size",
+      section: "Legacy protocol",
+      type: "integer",
+      permissions: ["Admin"],
+      description:
+        "Maximum size in bytes for the per-connection partial message buffer. " <>
+          "Data exceeding this limit is dropped. Prevents memory exhaustion from " <>
+          "clients sending data without newlines.",
+      default: 64 * 1024
     })
 
     add_site_config_type(%{
@@ -258,7 +269,7 @@ defmodule Teiserver.TeiserverConfigs do
     })
   end
 
-  defp login_configs() do
+  defp login_configs do
     add_site_config_type(%{
       key: "system.Login limit count",
       section: "Login",
@@ -296,7 +307,8 @@ defmodule Teiserver.TeiserverConfigs do
       permissions: ["Admin"],
       description: "The cap for number of concurrent users",
       default: 1000,
-      value_label: ""
+      value_label: "",
+      update_callback: fn rate -> Account.set_login_limit(rate) end
     })
 
     add_site_config_type(%{
@@ -307,7 +319,7 @@ defmodule Teiserver.TeiserverConfigs do
       description: "How many user per seconds should be able to log in",
       default: 2,
       value_label: "",
-      update_callback: fn rate -> Teiserver.Account.reset_login_rate_limiter(rate) end
+      update_callback: fn rate -> Account.reset_login_rate_limiter(rate) end
     })
 
     add_site_config_type(%{
@@ -321,7 +333,7 @@ defmodule Teiserver.TeiserverConfigs do
     })
   end
 
-  defp lobby_configs() do
+  defp lobby_configs do
     add_site_config_type(%{
       key: "teiserver.Uncertainty required to show rating",
       section: "Lobbies",
@@ -329,16 +341,6 @@ defmodule Teiserver.TeiserverConfigs do
       permissions: ["Admin"],
       description: "The maximum value uncertainty can be before in-game rating is shown ",
       default: 10
-    })
-
-    add_site_config_type(%{
-      key: "teiserver.Allow tournament command",
-      section: "Lobbies",
-      type: "boolean",
-      permissions: ["Admin"],
-      description:
-        "When set to true, the $tournament command will be able to be used. When disabled it can still be used but only to turn off tournament mode.",
-      default: false
     })
 
     add_site_config_type(%{
@@ -462,7 +464,7 @@ defmodule Teiserver.TeiserverConfigs do
       description:
         "It seems that the lobby views are very cpu hungry when lobby count is high. This is an attempt to troubleshoot and live disabling it.",
       default: false,
-      update_callback: &Teiserver.Lobby.disable_live_lobby_feature(&1)
+      update_callback: &Lobby.disable_live_lobby_feature(&1)
     })
 
     add_site_config_type(%{
@@ -475,7 +477,7 @@ defmodule Teiserver.TeiserverConfigs do
     })
   end
 
-  defp discord_configs() do
+  defp discord_configs do
     add_site_config_type(%{
       key: "teiserver.Bridge from discord",
       section: "Discord",
@@ -618,7 +620,7 @@ defmodule Teiserver.TeiserverConfigs do
   end
 
   @spec debugging_configs :: :ok
-  def debugging_configs() do
+  def debugging_configs do
     add_site_config_type(%{
       key: "debug.Print outgoing messages",
       section: "Debug",
@@ -639,7 +641,7 @@ defmodule Teiserver.TeiserverConfigs do
   end
 
   @spec profile_configs() :: :ok
-  def profile_configs() do
+  def profile_configs do
     add_site_config_type(%{
       key: "profile.Rank method",
       section: "Profiles",
@@ -736,8 +738,8 @@ defmodule Teiserver.TeiserverConfigs do
   end
 
   defp tachyon_configs do
-    Teiserver.Tachyon.setup_site_configs()
-    Teiserver.Party.setup_site_configs()
+    Tachyon.setup_site_configs()
+    Party.setup_site_configs()
     :ok
   end
 end

@@ -1,12 +1,12 @@
 defmodule TeiserverWeb.Admin.DiscordChannelController do
-  use TeiserverWeb, :controller
-
-  alias Teiserver.{Communication}
+  alias Teiserver.Communication
   alias Teiserver.Communication.DiscordChannelLib
-  import Teiserver.Helper.StringHelper, only: [convert_textarea_to_array: 1]
   alias Teiserver.Helper.StylingHelper
+  use TeiserverWeb, :controller
+  import Teiserver.Helper.StringHelper, only: [convert_textarea_to_array: 1]
 
   plug Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Communication.DiscordChannel,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}
@@ -55,7 +55,7 @@ defmodule TeiserverWeb.Admin.DiscordChannelController do
     conn
     |> assign(:special_names, get_special_names())
     |> assign(:changeset, changeset)
-    |> add_breadcrumb(name: "New lobby policy", url: conn.request_path)
+    |> add_breadcrumb(name: "New channel ref", url: conn.request_path)
     |> render("new.html")
   end
 
@@ -73,7 +73,7 @@ defmodule TeiserverWeb.Admin.DiscordChannelController do
     case Communication.create_discord_channel(discord_channel_params) do
       {:ok, _discord_channel} ->
         conn
-        |> put_flash(:info, "Lobby policy created successfully.")
+        |> put_flash(:info, "Channel ref created successfully.")
         |> redirect(to: ~p"/admin/discord_channels/")
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -114,7 +114,7 @@ defmodule TeiserverWeb.Admin.DiscordChannelController do
     case Communication.update_discord_channel(discord_channel, discord_channel_params) do
       {:ok, _discord_channel} ->
         conn
-        |> put_flash(:info, "Lobby policy updated successfully.")
+        |> put_flash(:info, "Channel ref updated successfully.")
         |> redirect(to: ~p"/admin/discord_channels")
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -133,11 +133,11 @@ defmodule TeiserverWeb.Admin.DiscordChannelController do
     {:ok, _discord_channel} = Communication.delete_discord_channel(discord_channel)
 
     conn
-    |> put_flash(:info, "Lobby policy deleted successfully.")
+    |> put_flash(:info, "Channel ref deleted successfully.")
     |> redirect(to: ~p"/admin/discord_channels")
   end
 
-  defp get_special_names() do
+  defp get_special_names do
     existing_names =
       Communication.list_discord_channels(select: [:name], limit: :infinity)
       |> Enum.map(fn %{name: name} -> name end)

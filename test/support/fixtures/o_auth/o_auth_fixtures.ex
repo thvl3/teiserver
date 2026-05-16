@@ -1,6 +1,11 @@
 defmodule Teiserver.OAuthFixtures do
-  alias Teiserver.OAuth.{Application, Code, Token, Credential}
+  @moduledoc false
+  alias Teiserver.OAuth.Application
+  alias Teiserver.OAuth.Code
+  alias Teiserver.OAuth.Credential
+  alias Teiserver.OAuth.Token
   alias Teiserver.Repo
+  alias Timex.Duration
 
   def app_attrs(owner_id) do
     %{
@@ -26,11 +31,11 @@ defmodule Teiserver.OAuthFixtures do
     {verifier, challenge, method} = generate_challenge()
 
     %{
-      value: Base.hex_encode32(:crypto.strong_rand_bytes(32)),
+      value: :crypto.strong_rand_bytes(32) |> Base.hex_encode32(),
       owner_id: user_id,
       application_id: app.id,
       scopes: app.scopes,
-      expires_at: Timex.add(now, Timex.Duration.from_minutes(5)),
+      expires_at: Timex.add(now, Duration.from_minutes(5)),
       redirect_uri: List.first(app.redirect_uris),
       challenge: challenge,
       challenge_method: method,
@@ -46,11 +51,11 @@ defmodule Teiserver.OAuthFixtures do
     now = DateTime.utc_now()
 
     %{
-      value: Base.hex_encode32(:crypto.strong_rand_bytes(32), padding: false),
+      value: :crypto.strong_rand_bytes(32) |> Base.hex_encode32(padding: false),
       owner_id: user_id,
       application_id: application.id,
       scopes: application.scopes,
-      expires_at: Timex.add(now, Timex.Duration.from_days(60)),
+      expires_at: Timex.add(now, Duration.from_days(60)),
       type: :access,
       refresh_token: nil
     }
@@ -82,7 +87,7 @@ defmodule Teiserver.OAuthFixtures do
   def setup_token(%{id: id}, opts), do: setup_token(id, opts)
 
   def setup_token(user_id, opts) do
-    uid = for _ <- 1..10, into: "", do: <<Enum.random(~c"abcdefghijklmnopqrstuvwxyz")>>
+    uid = for _i <- 1..10, into: "", do: <<Enum.random(~c"abcdefghijklmnopqrstuvwxyz")>>
 
     app =
       app_attrs(user_id)
@@ -94,7 +99,7 @@ defmodule Teiserver.OAuthFixtures do
     %{app: app, token: token}
   end
 
-  defp generate_challenge() do
+  defp generate_challenge do
     # A-Z,a-z,0-9 and -._~ are authorized, but can't be bothered to cover all
     # of that. hex encoding will fit
     # hardcoded random bytes generated with :crypto.strong_rand_bytes(32)
@@ -109,5 +114,5 @@ defmodule Teiserver.OAuthFixtures do
   end
 
   def hash_verifier(verifier),
-    do: Base.url_encode64(:crypto.hash(:sha256, verifier), padding: false)
+    do: verifier |> then(&:crypto.hash(:sha256, &1)) |> Base.url_encode64(padding: false)
 end

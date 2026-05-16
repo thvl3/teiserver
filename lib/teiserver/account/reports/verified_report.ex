@@ -1,12 +1,13 @@
 defmodule Teiserver.Account.VerifiedReport do
-  alias Teiserver.Helper.DatePresets
+  @moduledoc false
   alias Teiserver.Account
+  alias Teiserver.Helper.DatePresets
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-check"
+  def icon, do: "fa-solid fa-check"
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Admin"
+  def permissions, do: "Moderator"
 
   @spec run(Plug.Conn.t(), map()) :: {map(), map()}
   def run(_conn, params) do
@@ -45,7 +46,7 @@ defmodule Teiserver.Account.VerifiedReport do
 
     total =
       data
-      |> Enum.reduce(0, fn {_, count}, acc ->
+      |> Enum.reduce(0, fn {_status, count}, acc ->
         acc + count
       end)
 

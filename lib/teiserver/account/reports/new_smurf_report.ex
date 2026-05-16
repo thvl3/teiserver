@@ -1,13 +1,15 @@
 defmodule Teiserver.Account.NewSmurfReport do
-  alias Teiserver.{Account, CacheUser}
-  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
+  @moduledoc false
+  alias Teiserver.Account
+  alias Teiserver.Account.Auth
   require Logger
+  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-face-angry"
+  def icon, do: "fa-solid fa-face-angry"
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Moderator"
+  def permissions, do: "Moderator"
 
   @spec run(Plug.Conn.t(), map()) :: {map(), map()}
   def run(_conn, params) do
@@ -28,7 +30,7 @@ defmodule Teiserver.Account.NewSmurfReport do
           last_played_after: Timex.now() |> Timex.shift(days: -max_play_age),
           inserted_after: Timex.now() |> Timex.shift(days: -max_account_age),
           smurf_of: false,
-          verified: true
+          has_role: "Verified"
         ],
         limit: 1000,
         order_by: "Last played"
@@ -76,7 +78,7 @@ defmodule Teiserver.Account.NewSmurfReport do
         limit: :infinity
       )
       |> Enum.filter(fn %{user_id: userid} ->
-        CacheUser.is_verified?(userid)
+        Auth.verified?(userid)
       end)
 
     # Extract the found values
@@ -93,11 +95,11 @@ defmodule Teiserver.Account.NewSmurfReport do
 
     relevant_new_users =
       new_users
-      |> Enum.filter(fn user -> Enum.member?(relevant_new_user_ids, user.id) end)
-      |> Enum.reject(fn user ->
-        if params["ignore_banned"] == "true" do
-          Enum.member?(user.data["restrictions"], "Login")
-        end
+      |> Enum.filter(fn user ->
+        # A member of new user ids and either not_ignore_banned or not login restricted
+        Enum.member?(relevant_new_user_ids, user.id) and
+          (params["ignore_banned"] != "true" or
+             "Login" not in (user.restrictions || []))
       end)
 
     user_stats =
@@ -112,10 +114,7 @@ defmodule Teiserver.Account.NewSmurfReport do
       |> Enum.filter(fn u ->
         stats = user_stats[u.id]
 
-        cond do
-          (stats["smurf_count"] || 0) > 0 -> false
-          true -> true
-        end
+        (stats["smurf_count"] || 0) <= 0
       end)
 
     assigns = %{

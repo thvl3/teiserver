@@ -16,8 +16,9 @@ defmodule Teiserver.Battle.Balance.SplitNoobs do
   the noobs preferring higher rank and lower uncertainty.
   """
   alias Teiserver.Battle.Balance.BalanceTypes, as: BT
-  alias Teiserver.Battle.Balance.SplitNoobsTypes, as: SN
   alias Teiserver.Battle.Balance.BruteForce
+  alias Teiserver.Battle.Balance.LoserPicks
+  alias Teiserver.Battle.Balance.SplitNoobsTypes, as: SN
   import Teiserver.Helper.NumberHelper, only: [format: 1]
   # If player uncertainty is greater than equal to this, that player is considered a noob
   # The lowest uncertainty rank 0 player in integration server at the time of writing this is 6.65
@@ -42,7 +43,7 @@ defmodule Teiserver.Battle.Balance.SplitNoobs do
 
       {:error, message} ->
         # Call another balancer
-        result = Teiserver.Battle.Balance.LoserPicks.perform(expanded_group, team_count, opts)
+        result = LoserPicks.perform(expanded_group, team_count, opts)
 
         new_logs =
           ["#{message} Will use loser_picks algorithm instead.", @splitter, result.logs]
@@ -93,20 +94,18 @@ defmodule Teiserver.Battle.Balance.SplitNoobs do
     }
 
     noob_log =
-      cond do
-        length(state.noobs) > 0 ->
-          noobs_string =
-            Enum.map(state.noobs, fn x ->
-              log_noob(x)
-            end)
+      if Enum.empty?(state.noobs) do
+        "Solo Noobs: None"
+      else
+        noobs_string =
+          Enum.map(state.noobs, fn x ->
+            log_noob(x)
+          end)
 
-          [
-            "Solo noobs:",
-            noobs_string
-          ]
-
-        true ->
-          "Solo Noobs: None"
+        [
+          "Solo noobs:",
+          noobs_string
+        ]
       end
 
     logs =
@@ -241,8 +240,7 @@ defmodule Teiserver.Battle.Balance.SplitNoobs do
 
     logs = [
       "Perform brute force with the following players to get the best score.",
-      # credo:disable-for-next-line Credo.Check.Refactor.MapJoin
-      "Players: #{Enum.join(Enum.map(state.top_experienced, fn x -> log_player(x) end), ", ")}",
+      "Players: #{Enum.map_join(state.top_experienced, ", ", fn x -> log_player(x) end)}",
       @splitter,
       "Brute force result:",
       "Team rating diff penalty: #{format(combo_result.rating_diff_penalty)}",
@@ -252,8 +250,7 @@ defmodule Teiserver.Battle.Balance.SplitNoobs do
       "Score: #{format(combo_result.score)} (lower is better)",
       @splitter,
       "Draft remaining players (ordered from best to worst).",
-      # credo:disable-for-next-line Credo.Check.Refactor.MapJoin
-      "Remaining: #{Enum.join(Enum.map(remaining, fn x -> log_player(x) end), ", ")}"
+      "Remaining: #{Enum.map_join(remaining, ", ", fn x -> log_player(x) end)}"
     ]
 
     default_acc = combo_result
@@ -289,15 +286,15 @@ defmodule Teiserver.Battle.Balance.SplitNoobs do
   end
 
   defp get_captain_rating(team) do
-    if Enum.count(team) > 0 do
+    if Enum.empty?(team) do
+      0
+    else
       captain =
         Enum.max_by(team, fn x ->
           x.rating
         end)
 
       captain[:rating]
-    else
-      0
     end
   end
 
@@ -371,7 +368,7 @@ defmodule Teiserver.Battle.Balance.SplitNoobs do
   # This will not be displayed in chobby ui or player list; it's only used for balance
   # It will be used when calculating team deviation
   defp adjusted_rating(rating, uncertainty, rank) do
-    if is_newish_player?(rank, uncertainty) do
+    if newish_player?(rank, uncertainty) do
       # For newish players we assume they are the worst in the lobby e.g. 0 match rating and
       # then they converge to their true rating over time
       # Once their uncertainty is low enough, we fully trust their rating
@@ -426,14 +423,14 @@ defmodule Teiserver.Battle.Balance.SplitNoobs do
     Enum.filter(players, fn player ->
       cond do
         player.in_party? -> false
-        is_newish_player?(player.rank, player.uncertainty) -> true
+        newish_player?(player.rank, player.uncertainty) -> true
         player.rating <= 0 -> true
         true -> false
       end
     end)
   end
 
-  def is_newish_player?(rank, uncertainty) do
+  def newish_player?(rank, uncertainty) do
     uncertainty >= @high_uncertainty && rank <= 2
   end
 end

@@ -1,17 +1,19 @@
 defmodule Teiserver.Telemetry.SimpleAnonEventLib do
   @moduledoc false
-  use TeiserverWeb, :library_newform
-  alias Teiserver.Telemetry
-  alias Teiserver.Telemetry.{SimpleAnonEvent, SimpleAnonEventQueries}
+
   alias Phoenix.PubSub
+  alias Teiserver.Telemetry
+  alias Teiserver.Telemetry.SimpleAnonEvent
+  alias Teiserver.Telemetry.SimpleAnonEventQueries
+  use TeiserverWeb, :library_newform
 
   @broadcast_event_types ~w(game_start:singleplayer:scenario_end)
 
   @spec colour :: atom
-  def colour(), do: :info2
+  def colour, do: :info2
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-sliders-up"
+  def icon, do: "fa-sliders-up"
 
   @spec log_simple_anon_event(String.t(), String.t()) ::
           {:error, Ecto.Changeset} | {:ok, SimpleAnonEvent}
@@ -41,7 +43,7 @@ defmodule Teiserver.Telemetry.SimpleAnonEventLib do
 
         result
 
-      _ ->
+      _error ->
         result
     end
   end

@@ -1,8 +1,12 @@
 defmodule Teiserver.OAuth.ApplicationQueries do
-  use TeiserverWeb, :queries
-
-  alias Teiserver.OAuth.{Application, TokenQueries, CodeQueries, CredentialQueries}
+  @moduledoc false
   alias Teiserver.Data.Types, as: T
+  alias Teiserver.OAuth.Application
+  alias Teiserver.OAuth.CodeQueries
+  alias Teiserver.OAuth.CredentialQueries
+  alias Teiserver.OAuth.TokenQueries
+
+  use TeiserverWeb, :queries
 
   @doc """
   Returns the application corresponding to the given uid/client id
@@ -21,12 +25,9 @@ defmodule Teiserver.OAuth.ApplicationQueries do
   def get_application_by_id(nil), do: nil
 
   def get_application_by_id(id) do
-    # credo:disable-for-next-line Credo.Check.Readability.PreferImplicitTry
-    try do
-      base_query() |> preload(:owner) |> where_id(id) |> Repo.one()
-    rescue
-      Ecto.Query.CastError -> nil
-    end
+    base_query() |> preload(:owner) |> where_id(id) |> Repo.one()
+  rescue
+    Ecto.Query.CastError -> nil
   end
 
   @doc """
@@ -35,7 +36,7 @@ defmodule Teiserver.OAuth.ApplicationQueries do
   need to add some pagination to that query
   """
   @spec list_applications() :: [Application.t()]
-  def list_applications() do
+  def list_applications do
     base_query() |> preload(:owner) |> Repo.all()
   end
 
@@ -77,7 +78,7 @@ defmodule Teiserver.OAuth.ApplicationQueries do
     end)
   end
 
-  def base_query() do
+  def base_query do
     from app in Application, as: :app
   end
 
@@ -131,7 +132,7 @@ defmodule Teiserver.OAuth.ApplicationQueries do
   @spec delete_user_application_tokens(T.userid(), Application.id()) ::
           non_neg_integer()
   def delete_user_application_tokens(user_id, application_id) do
-    {count, _} =
+    {count, _deleted} =
       from(token in Teiserver.OAuth.Token,
         where: token.owner_id == ^user_id,
         where: token.application_id == ^application_id
@@ -148,7 +149,7 @@ defmodule Teiserver.OAuth.ApplicationQueries do
   @spec delete_user_application_codes(T.userid(), Application.id()) ::
           non_neg_integer()
   def delete_user_application_codes(user_id, application_id) do
-    {count, _} =
+    {count, _deleted} =
       from(code in Teiserver.OAuth.Code,
         where: code.owner_id == ^user_id,
         where: code.application_id == ^application_id

@@ -1,26 +1,24 @@
 defmodule Teiserver.Telemetry.TelemetryLib do
   @moduledoc false
-  import Telemetry.Metrics
+
   alias Teiserver.Telemetry.TelemetryServer
+  import Telemetry.Metrics
 
   @spec colours :: atom
-  def colours(), do: :warning2
+  def colours, do: :warning2
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-heart-pulse"
+  def icon, do: "fa-solid fa-heart-pulse"
 
   @spec get_totals_and_reset :: map()
-  def get_totals_and_reset() do
-    # credo:disable-for-next-line Credo.Check.Readability.PreferImplicitTry
-    try do
-      GenServer.call(TelemetryServer, :get_totals_and_reset)
-      # In certain situations (e.g. just after startup) it can be
-      # the process hasn't started up so we need to handle that
-      # without dying
-    catch
-      :exit, _ ->
-        nil
-    end
+  def get_totals_and_reset do
+    GenServer.call(TelemetryServer, :get_totals_and_reset)
+  catch
+    # In certain situations (e.g. just after startup) it can be
+    # the process hasn't started up so we need to handle that
+    # without dying
+    :exit, _reason ->
+      nil
   end
 
   @spec increment(any) :: :ok
@@ -35,7 +33,7 @@ defmodule Teiserver.Telemetry.TelemetryLib do
   end
 
   @spec metrics() :: list()
-  def metrics() do
+  def metrics do
     [
       last_value("teiserver.client.total"),
       last_value("teiserver.client.menu"),

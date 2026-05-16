@@ -7,13 +7,17 @@ defmodule Mix.Tasks.Teiserver.PartyBalanceStats do
   mix teiserver.party_balance_stats /var/log/teiserver/results.txt
   """
 
-  use Mix.Task
-  require Logger
-  alias Teiserver.Repo
-  alias Teiserver.{Battle, Game}
-  alias Teiserver.Battle.{BalanceLib}
+  alias Ecto.Adapters.SQL
   alias Mix.Tasks.Teiserver.PartyBalanceStatsTypes, as: PB
+  alias Teiserver.Battle
+  alias Teiserver.Battle.BalanceLib
   alias Teiserver.Config
+  alias Teiserver.Game
+  alias Teiserver.Repo
+
+  use Mix.Task
+
+  require Logger
 
   def run(args) do
     Logger.info("Args: #{args}")
@@ -85,7 +89,7 @@ defmodule Mix.Tasks.Teiserver.PartyBalanceStats do
     avg_time_taken =
       case num_matches do
         0 -> 0
-        _ -> time_taken / num_matches / 1000
+        _num_matches -> time_taken / num_matches / 1000
       end
 
     %{
@@ -106,12 +110,12 @@ defmodule Mix.Tasks.Teiserver.PartyBalanceStats do
 
   defp count_broken_parties(first_team, parties) do
     Enum.count(parties, fn party ->
-      is_party_broken?(first_team, party)
+      party_broken?(first_team, party)
     end)
   end
 
-  @spec is_party_broken?([number()], [number()]) :: any()
-  defp is_party_broken?(team, party) do
+  @spec party_broken?([number()], [number()]) :: any()
+  defp party_broken?(team, party) do
     count =
       Enum.count(party, fn x ->
         Enum.any?(team, fn y ->
@@ -252,7 +256,7 @@ defmodule Mix.Tasks.Teiserver.PartyBalanceStats do
     limit 100;
     """
 
-    results = Ecto.Adapters.SQL.query!(Repo, query, [team_size, team_count])
+    results = SQL.query!(Repo, query, [team_size, team_count])
 
     results.rows
     |> Enum.map(fn [id, _insert_date] ->
@@ -293,7 +297,7 @@ defmodule Mix.Tasks.Teiserver.PartyBalanceStats do
 
     case result do
       {:error, message} -> Logger.error("Cannot write to #{filepath} #{message}")
-      _ -> Logger.info("Successfully output logs to #{filepath}")
+      _ok -> Logger.info("Successfully output logs to #{filepath}")
     end
   end
 end

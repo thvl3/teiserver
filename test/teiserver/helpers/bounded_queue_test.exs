@@ -1,7 +1,7 @@
 defmodule Teiserver.Helpers.BoundedQueueTest do
-  use ExUnit.Case, async: true
-
   alias Teiserver.Helpers.BoundedQueue, as: BQ
+
+  use ExUnit.Case, async: true
 
   test "must provide correct arg" do
     assert_raise ArgumentError, fn ->
@@ -11,8 +11,8 @@ defmodule Teiserver.Helpers.BoundedQueueTest do
 
   test "is_empty" do
     q = BQ.new(1)
-    assert BQ.is_empty(q)
-    assert not BQ.is_empty(BQ.put(q, :coucou))
+    assert BQ.empty?(q)
+    assert not (q |> BQ.put(:coucou) |> BQ.empty?())
   end
 
   test "from and to list" do
@@ -38,7 +38,7 @@ defmodule Teiserver.Helpers.BoundedQueueTest do
   test "out" do
     q = BQ.new(1) |> BQ.put(:item)
     assert {{:value, :item}, q2} = BQ.out(q)
-    assert BQ.is_empty(q2)
+    assert BQ.empty?(q2)
   end
 
   test "max len" do
@@ -92,7 +92,7 @@ defmodule Teiserver.Helpers.BoundedQueueTest do
     test "match last element" do
       q = BQ.from_list([1, 2, 3], 5)
       {a, b} = BQ.split_when(q, &(&1 == 3))
-      assert {{:value, 1}, _} = BQ.out(a)
+      assert {{:value, 1}, _queue} = BQ.out(a)
       assert BQ.to_list(a) == [1, 2, 3]
       assert BQ.to_list(b) == []
     end

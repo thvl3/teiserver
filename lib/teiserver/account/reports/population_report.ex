@@ -1,12 +1,14 @@
 defmodule Teiserver.Account.PopulationReport do
+  @moduledoc false
+  alias Ecto.Adapters.SQL
   alias Teiserver.Helper.DatePresets
   alias Teiserver.Repo
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-people-group"
+  def icon, do: "fa-solid fa-people-group"
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Admin"
+  def permissions, do: "Moderator"
 
   @doc """
 
@@ -56,10 +58,10 @@ defmodule Teiserver.Account.PopulationReport do
   end
 
   defp exclude_bots_where("true") do
-    "NOT users.data -> 'roles' @> '\"Bot\"'"
+    "NOT ('Bot' = ANY(users.roles))"
   end
 
-  defp exclude_bots_where(_), do: nil
+  defp exclude_bots_where(_value), do: nil
 
   # Get the ids of the users we want to query stuff about
   @spec get_userids(map()) :: String.t()
@@ -126,7 +128,7 @@ defmodule Teiserver.Account.PopulationReport do
     ORDER BY count DESC;
     """
 
-    case Ecto.Adapters.SQL.query(Repo, query, []) do
+    case SQL.query(Repo, query, []) do
       {:ok, results} ->
         results.rows
 
@@ -162,7 +164,7 @@ defmodule Teiserver.Account.PopulationReport do
   @spec stat_data(map()) :: map()
   defp stat_data(data) do
     %{
-      total: data |> Enum.map(fn [_, v] -> v end) |> Enum.sum()
+      total: data |> Enum.map(fn [_key, v] -> v end) |> Enum.sum()
     }
   end
 

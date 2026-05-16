@@ -1,16 +1,15 @@
 defmodule TeiserverWeb.Moderation.ReportControllerTest do
   @moduledoc false
+
+  alias Teiserver.Helpers.GeneralTestLib
+  alias Teiserver.Moderation.ModerationTestLib
+  alias Teiserver.TeiserverTestLib
+
   use TeiserverWeb.ConnCase
 
-  alias Teiserver.Moderation.ModerationTestLib
-
-  alias Central.Helpers.GeneralTestLib
-
-  @moduletag :needs_attention
-
   setup do
-    GeneralTestLib.conn_setup(["Reviewer", "Moderator"])
-    |> Teiserver.TeiserverTestLib.conn_setup()
+    GeneralTestLib.conn_setup(["Reviewer", "Moderator", "Overwatch"])
+    |> TeiserverTestLib.conn_setup()
   end
 
   describe "index" do

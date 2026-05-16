@@ -1,11 +1,18 @@
 defmodule TeiserverWeb.AdminDashLive.Index do
-  use TeiserverWeb, :live_view
+  @moduledoc false
   alias Phoenix.LiveView.Socket
   alias Phoenix.PubSub
-
   alias Teiserver
-  alias Teiserver.{Battle, Coordinator, Game}
-  alias Teiserver.Account.AccoladeLib
+  alias Teiserver.Admin.AdminLib
+  alias Teiserver.Battle
+  alias Teiserver.Battle.MatchMonitorServer
+  alias Teiserver.Bridge.BridgeServer
+  alias Teiserver.Bridge.DiscordSystem
+  alias Teiserver.Communication
+  alias Teiserver.Coordinator
+  alias Teiserver.Coordinator.AutomodServer
+
+  use TeiserverWeb, :live_view
 
   @empty_telemetry_data %{
     client: %{
@@ -20,7 +27,7 @@ defmodule TeiserverWeb.AdminDashLive.Index do
     total_clients_connected: 0
   }
 
-  @impl true
+  @impl Phoenix.LiveView
   def mount(_params, session, socket) do
     telemetry_data =
       Teiserver.cache_get(:application_temp_cache, :telemetry_data) || @empty_telemetry_data
@@ -31,11 +38,11 @@ defmodule TeiserverWeb.AdminDashLive.Index do
       |> add_breadcrumb(name: "Admin", url: "/teiserver/admin")
       |> add_breadcrumb(name: "Dashboard", url: "/admin/dashboard")
       |> assign(:site_menu_active, "admin")
-      |> assign(:view_colour, Teiserver.Admin.AdminLib.colours())
+      |> assign(:view_colour, AdminLib.colours())
       |> assign(:telemetry_client, telemetry_data.client)
       |> assign(:telemetry_battle, telemetry_data.battle)
       |> assign(:total_connected_clients, telemetry_data.total_clients_connected)
-      |> update_policies()
+      |> assign(:use_discord, Communication.use_discord?())
       |> update_lobbies()
       |> update_server_pids()
 
@@ -44,7 +51,7 @@ defmodule TeiserverWeb.AdminDashLive.Index do
     {:ok, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_params(params, _url, socket) do
     case allow?(socket.assigns[:current_user], "Moderator") do
       true ->
@@ -57,11 +64,10 @@ defmodule TeiserverWeb.AdminDashLive.Index do
     end
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_info(:tick, socket) do
     {:noreply,
      socket
-     |> update_policies()
      |> update_lobbies()
      |> update_server_pids()}
   end
@@ -75,7 +81,7 @@ defmodule TeiserverWeb.AdminDashLive.Index do
      |> assign(:total_connected_clients, data.total_clients_connected)}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_event("check-consuls", _event, socket) do
     Coordinator.start_all_consuls()
     {:noreply, socket}
@@ -104,23 +110,24 @@ defmodule TeiserverWeb.AdminDashLive.Index do
     {:noreply, socket}
   end
 
-  def handle_event("restart-policies", _event, socket) do
-    Game.pre_cache_policies()
-    {:noreply, socket}
-  end
+  @spec handle_event(String.t(), map(), Socket.t()) :: {:noreply, Socket.t()}
+  def handle_event("restart-discord-bridge", _event, socket) do
+    username = socket.assigns[:current_user].name
+    restart_status = DiscordSystem.restart("manual restart from #{username}")
 
-  @spec update_policies(Socket.t()) :: Socket.t()
-  defp update_policies(socket) do
-    policies =
-      Game.list_lobby_policies()
-      |> Enum.map(fn lobby_policy ->
-        organiser_pid = Game.get_lobby_organiser_pid(lobby_policy.id)
-        {lobby_policy, organiser_pid}
-      end)
-      |> Enum.sort_by(fn t -> elem(t, 0).name end, &<=/2)
+    {flash_type, message} =
+      case restart_status do
+        {:ok, pid} when is_pid(pid) ->
+          {:info, "Discord Bridge restarted. Manual chat test recommended."}
 
-    socket
-    |> assign(:policies, policies)
+        :disabled ->
+          {:info, "Discord bridge is disabled"}
+
+        _other ->
+          {:error, "An unexpected status was received. Check logs"}
+      end
+
+    {:noreply, put_flash(socket, flash_type, message)}
   end
 
   @spec update_lobbies(Socket.t()) :: Socket.t()
@@ -133,13 +140,10 @@ defmodule TeiserverWeb.AdminDashLive.Index do
 
         throttle_pid =
           case Horde.Registry.lookup(Teiserver.ThrottleRegistry, "LobbyThrottle:#{lobby_id}") do
-            [{pid, _}] -> pid
-            _ -> nil
+            [{pid, _value}] -> pid
+            _other -> nil
           end
 
-        {lobby_id, consul_pid, balancer_pid, throttle_pid}
-      end)
-      |> Enum.map(fn {lobby_id, consul_pid, balancer_pid, throttle_pid} ->
         {Battle.get_lobby(lobby_id), consul_pid, balancer_pid, throttle_pid}
       end)
       |> Enum.sort_by(fn t -> elem(t, 0).name end, &<=/2)
@@ -152,17 +156,16 @@ defmodule TeiserverWeb.AdminDashLive.Index do
   defp update_server_pids(socket) do
     lobby_id_server_pid =
       case Horde.Registry.lookup(Teiserver.ServerRegistry, "LobbyIdServer") do
-        [{pid, _}] -> pid
-        _ -> nil
+        [{pid, _value}] -> pid
+        _other -> nil
       end
 
     server_pids = [
       {"Lobby ID server", lobby_id_server_pid},
       {"Coordinator", Coordinator.get_coordinator_pid()},
-      {"Accolades", AccoladeLib.get_accolade_bot_pid()},
-      {"Match Monitor", Teiserver.Battle.MatchMonitorServer.get_match_monitor_pid()},
-      {"Automod", Teiserver.Coordinator.AutomodServer.get_automod_pid()},
-      {"Discord Bridge Bot", Teiserver.Bridge.BridgeServer.get_bridge_pid()}
+      {"Match Monitor", MatchMonitorServer.get_match_monitor_pid()},
+      {"Automod", AutomodServer.get_automod_pid()},
+      {"Discord Bridge Bot", BridgeServer.get_bridge_pid()}
     ]
 
     socket

@@ -3,6 +3,7 @@ defmodule TeiserverWeb.Router do
 
   pipeline :logging_live_auth do
     plug Bodyguard.Plug.Authorize,
+      fallback: TeiserverWeb.Controllers.BodyguardFallback,
       policy: Teiserver.Logging.LiveLib,
       action: :live,
       user: {Teiserver.Account.AuthLib, :current_user}
@@ -143,7 +144,7 @@ defmodule TeiserverWeb.Router do
     get("/forgot_password", SessionController, :forgot_password)
     post("/send_password_reset", SessionController, :send_password_reset)
     get("/password_reset/:value", SessionController, :password_reset_form)
-    post("/password_reset/:value", SessionController, :password_reset_post)
+    put("/password_reset/:value", SessionController, :update_password)
     get("/one_time_login/:value", SessionController, :one_time_login)
 
     get("/register", RegistrationController, :new)
@@ -216,14 +217,6 @@ defmodule TeiserverWeb.Router do
     )
   end
 
-  scope "/", TeiserverWeb.General, as: :ts_general do
-    pipe_through([:browser, :nomenu_layout])
-
-    get("/code_of_conduct", GeneralController, :code_of_conduct)
-    get("/privacy_policy", GeneralController, :gdpr)
-    get("/gdpr", GeneralController, :gdpr)
-  end
-
   scope "/account", TeiserverWeb.Account do
     pipe_through([:live_browser, :app_layout, :protected])
 
@@ -263,7 +256,6 @@ defmodule TeiserverWeb.Router do
       live "/:userid/accolades", ProfileLive.Accolades, :accolades
       live "/:userid/matches", ProfileLive.Matches, :matches
       live "/:userid/playtime", ProfileLive.Playtime, :playtime
-      live "/:userid/achievements", ProfileLive.Achievements, :achievements
       live "/:userid/appearance", ProfileLive.Appearance, :appearance
       live "/:userid/relationships", ProfileLive.Relationships, :relationships
       live "/:userid/contributor", ProfileLive.Contributor, :contributor
@@ -333,13 +325,6 @@ defmodule TeiserverWeb.Router do
       live "/:id/balance", MatchLive.Show, :balance
       live "/:id/events", MatchLive.Show, :events
     end
-  end
-
-  scope "/tournament", TeiserverWeb.TournamentLive, as: :tournament do
-    pipe_through([:browser, :app_layout, :protected])
-
-    live("/lobbies", Index, :index)
-    live("/lobbies/show/:id", Show, :show)
   end
 
   scope "/teiserver/account", TeiserverWeb.Account.PartyLive, as: :ts_game do
@@ -467,7 +452,6 @@ defmodule TeiserverWeb.Router do
 
     live("/dashboard", Index, :index)
     live("/dashboard/login_throttle", LoginThrottle, :index)
-    live("/dashboard/policy/:id", Policy, :policy)
   end
 
   scope "/teiserver/admin", TeiserverWeb.ClientLive, as: :ts_admin do
@@ -482,20 +466,6 @@ defmodule TeiserverWeb.Router do
 
     live("/party", Index, :index)
     live("/party/:id", Show, :show)
-  end
-
-  scope "/moderation", TeiserverWeb.Moderation do
-    pipe_through([:browser, :app_layout, :protected])
-
-    live_session :overwatch,
-      on_mount: [
-        {Teiserver.Account.AuthPlug, :ensure_authenticated},
-        {Teiserver.Account.AuthPlug, {:authorise, "Overwatch"}}
-      ] do
-      live "/overwatch", OverwatchLive.Index, :index
-      live "/overwatch/target/:target_id", OverwatchLive.User, :user
-      live "/overwatch/report_group/:id", OverwatchLive.ReportGroupDetail, :index
-    end
   end
 
   scope "/moderation", TeiserverWeb.Moderation do
@@ -522,7 +492,8 @@ defmodule TeiserverWeb.Router do
     put("/report/:id/close", ReportController, :close)
     put("/report/:id/open", ReportController, :open)
 
-    get("/action/search", ActionController, :search)
+    get("/action/search", ActionController, :index)
+    post("/action/search", ActionController, :index)
     get("/action/new_with_user", ActionController, :new_with_user)
     put("/action/halt/:id", ActionController, :halt)
     put("/action/re-post/:id", ActionController, :re_post)
@@ -530,15 +501,6 @@ defmodule TeiserverWeb.Router do
     resources("/action", ActionController,
       only: [:index, :show, :new, :create, :edit, :update, :delete]
     )
-
-    get("/proposal/new_with_user", ProposalController, :new_with_user)
-    put("/proposal/vote/:proposal_id/:direction", ProposalController, :vote)
-
-    resources("/proposal", ProposalController,
-      only: [:index, :show, :new, :create, :edit, :update]
-    )
-
-    post("/proposal/:id/conclude", ProposalController, :conclude)
 
     put("/ban/:id/disable", BanController, :disable)
     put("/ban/:id/enable", BanController, :enable)
@@ -548,10 +510,6 @@ defmodule TeiserverWeb.Router do
 
   scope "/admin", TeiserverWeb.Admin, as: :admin do
     pipe_through([:browser, :app_layout, :protected])
-
-    resources("/lobby_policies", LobbyPolicyController,
-      only: [:index, :new, :create, :show, :edit, :update, :delete]
-    )
 
     resources("/text_callbacks", TextCallbackController,
       only: [:index, :new, :create, :show, :edit, :update, :delete]
@@ -684,11 +642,6 @@ defmodule TeiserverWeb.Router do
     get("/matches/by_server/:uuid", MatchController, :server_index)
     get("/matches/user/:user_id", MatchController, :user_show)
     resources("/matches", MatchController, only: [:index, :show, :delete])
-
-    # resources("/chat", ChatController, only: [:index])
-    # post("/chat", ChatController, :index)
-
-    resources("/achievements", AchievementController)
 
     get("/lobbies/:id/server_chat/download", LobbyController, :server_chat_download)
     get("/lobbies/:id/server_chat", LobbyController, :server_chat)

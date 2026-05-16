@@ -1,7 +1,9 @@
 defmodule Teiserver.Microblog.UploadLib do
   @moduledoc false
+
+  alias Teiserver.Microblog.Upload
+  alias Teiserver.Microblog.UploadQueries
   use TeiserverWeb, :library_newform
-  alias Teiserver.Microblog.{Upload, UploadQueries}
 
   @doc """
   Returns the list of uploads.

@@ -1,7 +1,10 @@
 defmodule Teiserver.Moderation.ReportLib do
   @moduledoc false
-  use TeiserverWeb, :library
+
+  alias Teiserver.Battle.MatchLib
+  alias Teiserver.Chat.LobbyMessageLib
   alias Teiserver.Moderation.Report
+  use TeiserverWeb, :library
 
   # Functions
   @spec icon :: String.t()
@@ -26,14 +29,14 @@ defmodule Teiserver.Moderation.ReportLib do
     }
   end
 
-  def types() do
+  def types do
     [
-      {"Chat / Communication", "chat", Teiserver.Chat.LobbyMessageLib.icon()},
-      {"In game actions", "actions", Teiserver.Battle.MatchLib.icon()}
+      {"Chat / Communication", "chat", LobbyMessageLib.icon()},
+      {"In game actions", "actions", MatchLib.icon()}
     ]
   end
 
-  def sub_types() do
+  def sub_types do
     %{
       "chat" => [
         {"Spam", "spam", "fa-envelopes-bulk"},
@@ -50,14 +53,14 @@ defmodule Teiserver.Moderation.ReportLib do
     }
   end
 
-  def sections() do
+  def sections do
     [
-      {"Chat / Communication", "chat", Teiserver.Chat.LobbyMessageLib.icon()},
-      {"In game actions", "actions", Teiserver.Battle.MatchLib.icon()}
+      {"Chat / Communication", "chat", LobbyMessageLib.icon()},
+      {"In game actions", "actions", MatchLib.icon()}
     ]
   end
 
-  def sub_sections() do
+  def sub_sections do
     %{
       "chat" => [
         {"Spam", "spam", "fa-envelopes-bulk"},
@@ -91,8 +94,8 @@ defmodule Teiserver.Moderation.ReportLib do
   end
 
   @spec _search(Ecto.Query.t(), atom(), any()) :: Ecto.Query.t()
-  def _search(query, _, ""), do: query
-  def _search(query, _, nil), do: query
+  def _search(query, _key, ""), do: query
+  def _search(query, _key, nil), do: query
 
   def _search(query, :id, id) do
     from reports in query,

@@ -1,9 +1,12 @@
 defmodule Teiserver.Matchmaking do
+  @moduledoc false
+  alias Phoenix.PubSub
   alias Teiserver.Data.Types, as: T
   alias Teiserver.Matchmaking
   alias Teiserver.Matchmaking.Member
+  alias Teiserver.Matchmaking.QueueRegistry
+  alias Teiserver.Matchmaking.QueueServer
   alias Teiserver.Party
-  alias Phoenix.PubSub
   require Logger
 
   @type queue :: Matchmaking.QueueServer.queue()
@@ -17,24 +20,24 @@ defmodule Teiserver.Matchmaking do
   @type ready_data :: Matchmaking.PairingRoom.ready_data()
   @type stats :: Matchmaking.QueueServer.stats()
 
-  @spec lookup_queue(Matchmaking.QueueServer.id()) :: pid() | nil
+  @spec lookup_queue(QueueServer.id()) :: pid() | nil
   def lookup_queue(queue_id) do
-    Matchmaking.QueueRegistry.lookup(queue_id)
+    QueueRegistry.lookup(queue_id)
   end
 
   @doc """
   Return the list of currently available queues
   """
   @spec list_queues() :: [{queue_id(), queue()}]
-  def list_queues() do
-    Matchmaking.QueueRegistry.list()
+  def list_queues do
+    QueueRegistry.list()
   end
 
   @doc """
   Return the list of queues with their stats and player counts
   """
   @spec list_queues_with_stats() :: [{queue_id(), map()}]
-  def list_queues_with_stats() do
+  def list_queues_with_stats do
     list_queues()
     |> Enum.map(fn {queue_id, queue} ->
       {:ok, stats} = get_stats(queue_id)
@@ -52,7 +55,7 @@ defmodule Teiserver.Matchmaking do
   @spec join_queue(queue_id(), version :: String.t(), T.userid(), Party.id() | nil) ::
           join_result()
   def join_queue(queue_id, version, member, party_id \\ nil) do
-    Matchmaking.QueueServer.join_queue(queue_id, version, member, party_id)
+    QueueServer.join_queue(queue_id, version, member, party_id)
   end
 
   @spec party_join_queue(queue_id(), version :: String.t(), Party.id(), [%{id: T.userid()}]) ::
@@ -61,7 +64,7 @@ defmodule Teiserver.Matchmaking do
 
   @spec leave_queue(queue_id(), T.userid()) :: leave_result()
   def leave_queue(queue_id, user_id) do
-    Matchmaking.QueueServer.leave_queue(queue_id, user_id)
+    QueueServer.leave_queue(queue_id, user_id)
   end
 
   @spec cancel(pid(), T.userid()) :: :ok
@@ -91,7 +94,7 @@ defmodule Teiserver.Matchmaking do
   Where stats includes player_count, total_joined, total_left, total_matched, and total_wait_time_s.
   """
   @spec subscribe_to_queue_updates() :: :ok
-  def subscribe_to_queue_updates() do
+  def subscribe_to_queue_updates do
     PubSub.subscribe(Teiserver.PubSub, "matchmaking_queues")
   end
 
@@ -117,7 +120,7 @@ defmodule Teiserver.Matchmaking do
   matchmaking state, for example when a new asset (game/engine) is set
   It is a bit brutal but simple
   """
-  def restart_queues() do
+  def restart_queues do
     Logger.info("Restarting all matchmaking queues")
 
     :ok =

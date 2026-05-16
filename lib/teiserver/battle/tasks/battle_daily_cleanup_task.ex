@@ -1,10 +1,13 @@
 defmodule Teiserver.Battle.Tasks.CleanupTask do
   @moduledoc false
+
+  alias Ecto.Adapters.SQL
+  alias Teiserver.Battle
+  alias Teiserver.Helper.StringHelper
+  alias Teiserver.Repo
+
   use Oban.Worker, queue: :cleanup
 
-  alias Teiserver.Repo
-  alias Teiserver.{Battle}
-  alias Teiserver.Helper.StringHelper
   require Logger
 
   @strip_data_days 35
@@ -12,7 +15,7 @@ defmodule Teiserver.Battle.Tasks.CleanupTask do
 
   @impl Oban.Worker
   @spec perform(any) :: :ok
-  def perform(_) do
+  def perform(_job) do
     start_time = System.system_time(:millisecond)
 
     delete_unstarted_matches()
@@ -28,11 +31,11 @@ defmodule Teiserver.Battle.Tasks.CleanupTask do
     :ok
   end
 
-  defp get_days() do
+  defp get_days do
     Application.get_env(:teiserver, Teiserver)[:retention][:lobby_chat] + 1
   end
 
-  def delete_unstarted_matches() do
+  def delete_unstarted_matches do
     # If a match is never marked as finished after X days, we delete it
     Battle.list_matches(
       search: [
@@ -47,7 +50,7 @@ defmodule Teiserver.Battle.Tasks.CleanupTask do
     |> delete_matches("unstarted")
   end
 
-  def delete_unfinished_matches() do
+  def delete_unfinished_matches do
     # If a match is never marked as finished after X days, we delete it
     Battle.list_matches(
       search: [
@@ -63,7 +66,7 @@ defmodule Teiserver.Battle.Tasks.CleanupTask do
     |> delete_matches("unfinished")
   end
 
-  def delete_old_matches() do
+  def delete_old_matches do
     # Rated matches - We don't delete them, they have rating logs attached to them
     # battle_match_rated_days =
     #   Application.get_env(:teiserver, Teiserver)[:retention][:battle_match_rated]
@@ -95,71 +98,64 @@ defmodule Teiserver.Battle.Tasks.CleanupTask do
     |> delete_matches("old unrated")
   end
 
-  def delete_matches([], _), do: :ok
+  def delete_matches([], _logger_set), do: :ok
 
   def delete_matches(ids, _logger_set) do
     ids = Enum.take(ids, @chunk_size * 100)
     {ids, remaining} = Enum.split(ids, @chunk_size)
 
     # Tables we update
-    Ecto.Adapters.SQL.query!(
+    SQL.query!(
       Repo,
       "UPDATE teiserver_account_accolades SET match_id = NULL WHERE match_id = ANY($1)",
       [ids]
     )
 
-    Ecto.Adapters.SQL.query!(
+    SQL.query!(
       Repo,
       "UPDATE moderation_reports SET match_id = NULL WHERE match_id = ANY($1)",
       [ids]
     )
 
-    Ecto.Adapters.SQL.query!(
+    SQL.query!(
       Repo,
       "UPDATE telemetry_simple_match_events SET match_id = NULL WHERE match_id = ANY($1)",
       [ids]
     )
 
-    Ecto.Adapters.SQL.query!(
+    SQL.query!(
       Repo,
       "UPDATE telemetry_complex_match_events SET match_id = NULL WHERE match_id = ANY($1)",
       [ids]
     )
 
-    Ecto.Adapters.SQL.query!(
+    SQL.query!(
       Repo,
       "UPDATE telemetry_simple_lobby_events SET match_id = NULL WHERE match_id = ANY($1)",
       [ids]
     )
 
-    Ecto.Adapters.SQL.query!(
+    SQL.query!(
       Repo,
       "UPDATE telemetry_complex_lobby_events SET match_id = NULL WHERE match_id = ANY($1)",
       [ids]
     )
 
-    # Update report groups
-    Ecto.Adapters.SQL.query!(
-      Repo,
-      "UPDATE moderation_report_groups SET match_id = NULL WHERE match_id = ANY($1)",
-      [ids]
-    )
-
     # Match specific things we want to delete
-    Ecto.Adapters.SQL.query!(
+    SQL.query!(
       Repo,
       "DELETE FROM teiserver_lobby_messages WHERE match_id = ANY($1)",
       [ids]
     )
 
-    Ecto.Adapters.SQL.query!(
+    SQL.query!(
       Repo,
       "DELETE FROM teiserver_battle_match_memberships WHERE match_id = ANY($1)",
       [ids]
     )
 
     # Now delete the matches themselves
-    Ecto.Adapters.SQL.query!(
+    SQL.query!(
       Repo,
       "DELETE FROM teiserver_battle_matches WHERE id = ANY($1)",
       [ids]
@@ -169,7 +165,7 @@ defmodule Teiserver.Battle.Tasks.CleanupTask do
     delete_matches(remaining, nil)
   end
 
-  defp strip_data_from_older_matches() do
+  defp strip_data_from_older_matches do
     finished_before =
       Timex.now()
       |> Timex.shift(days: -@strip_data_days)
@@ -184,6 +180,6 @@ defmodule Teiserver.Battle.Tasks.CleanupTask do
           AND finished > $2
     """
 
-    Ecto.Adapters.SQL.query!(Repo, query, [finished_before, finished_after])
+    SQL.query!(Repo, query, [finished_before, finished_after])
   end
 end

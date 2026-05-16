@@ -20,6 +20,17 @@
                 "mapName": { "type": "string" },
                 "allyTeamConfig": {
                     "$ref": "../../definitions/allyTeamConfig.json"
+                },
+                "areBossesEnabled": { "type": "boolean"},
+                "gameOptions": {
+                    "type": "object",
+                    "patternProperties": {
+                        "^.*$": {
+                            "type": "object",
+                            "properties": { "value": { "type": "string" } },
+                            "required": ["value"]
+                        }
+                    }
                 }
             },
             "required": ["name", "mapName", "allyTeamConfig"]

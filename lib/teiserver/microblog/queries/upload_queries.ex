@@ -1,8 +1,9 @@
 defmodule Teiserver.Microblog.UploadQueries do
   @moduledoc false
-  use TeiserverWeb, :queries
-  alias Teiserver.Microblog.Upload
+
   alias Teiserver.Helper.QueryHelpers
+  alias Teiserver.Microblog.Upload
+  use TeiserverWeb, :queries
 
   # Queries
   @spec query_uploads(list) :: Ecto.Query.t()
@@ -29,8 +30,8 @@ defmodule Teiserver.Microblog.UploadQueries do
   end
 
   @spec _where(Ecto.Query.t(), atom(), any()) :: Ecto.Query.t()
-  defp _where(query, _, ""), do: query
-  defp _where(query, _, nil), do: query
+  defp _where(query, _key, ""), do: query
+  defp _where(query, _key, nil), do: query
 
   defp _where(query, :id, id) do
     from uploads in query,

@@ -1,15 +1,18 @@
 defmodule TeiserverWeb.Admin.ChatLive.Index do
+  alias Teiserver.Account
+  alias Teiserver.Chat
+  alias Teiserver.Chat.LobbyMessageLib
+  alias Teiserver.Coordinator
   use TeiserverWeb, :live_view
-  alias Teiserver.{Account, Coordinator, Chat}
 
-  @impl true
+  @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     case allow?(socket.assigns[:current_user], "Reviewer") do
       true ->
         socket =
           socket
           |> assign(:site_menu_active, "chat")
-          |> assign(:view_colour, Teiserver.Chat.LobbyMessageLib.colours())
+          |> assign(:view_colour, LobbyMessageLib.colours())
           |> assign(:messages, [])
           |> assign(:usernames, %{})
           |> add_breadcrumb(name: "Admin", url: "/teiserver/admin")
@@ -28,7 +31,7 @@ defmodule TeiserverWeb.Admin.ChatLive.Index do
     end
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_params(params, _url, %{assigns: %{filters: filters}} = socket) do
     filters =
       if params["userid"] do
@@ -49,13 +52,13 @@ defmodule TeiserverWeb.Admin.ChatLive.Index do
      |> get_messages()}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_info(:do_get_messages, socket) do
     socket = get_messages(socket)
     {:noreply, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_event("filter-update", event, %{assigns: %{filters: filters}} = socket) do
     [key] = event["_target"]
     value = event[key]
@@ -75,7 +78,7 @@ defmodule TeiserverWeb.Admin.ChatLive.Index do
 
           Map.put(new_filters, "userids", userids)
 
-        _ ->
+        _other ->
           new_filters
       end
 
@@ -106,6 +109,7 @@ defmodule TeiserverWeb.Admin.ChatLive.Index do
       "mode" => "Lobby",
       "term" => "",
       "username" => "",
+      "user-raw-filter" => "",
       "order" => "Newest first",
       "message-format" => "Table"
     })
@@ -124,7 +128,7 @@ defmodule TeiserverWeb.Admin.ChatLive.Index do
         "24 hours" -> Timex.now() |> Timex.shift(hours: -24)
         "2 days" -> Timex.now() |> Timex.shift(days: -2)
         "7 days" -> Timex.now() |> Timex.shift(days: -7)
-        _ -> nil
+        _other -> nil
       end
 
     excluded_ids =
@@ -176,11 +180,28 @@ defmodule TeiserverWeb.Admin.ChatLive.Index do
             limit: 100,
             order_by: filters["order"]
           )
+
+        "Direct" ->
+          Chat.list_direct_messages(
+            search: [
+              member_id_in: filters["userids"],
+              inserted_after: inserted_after,
+              term: filters["term"]
+            ],
+            limit: 100,
+            preload: [:users],
+            order_by: filters["order"]
+          )
       end
 
     extra_usernames =
       messages
-      |> Enum.map(fn m -> m.user_id end)
+      |> Enum.flat_map(fn m ->
+        case mode do
+          "Direct" -> [m.from_id, m.to_id]
+          _non_direct -> [m.user_id]
+        end
+      end)
       |> Enum.reject(fn userid ->
         Map.has_key?(socket.assigns.usernames, userid)
       end)

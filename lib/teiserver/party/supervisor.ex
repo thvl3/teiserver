@@ -3,10 +3,10 @@ defmodule Teiserver.Party.Supervisor do
   Supervise player's parties
   """
 
-  use DynamicSupervisor
-
-  alias Teiserver.Party
   alias Teiserver.Data.Types, as: T
+  alias Teiserver.Party
+
+  use DynamicSupervisor
 
   @doc """
   Create a new party
@@ -31,8 +31,8 @@ defmodule Teiserver.Party.Supervisor do
     DynamicSupervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
   end
 
-  @impl true
-  def init(_) do
+  @impl DynamicSupervisor
+  def init(_init_arg) do
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 end

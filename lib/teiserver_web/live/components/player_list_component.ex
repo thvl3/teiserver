@@ -3,12 +3,12 @@ defmodule TeiserverWeb.Components.PlayerListComponent do
   use TeiserverWeb, :live_component
   import Teiserver.Account.AuthLib, only: [allow?: 2]
 
-  @impl true
+  @impl Phoenix.LiveComponent
   def update_many(list_of_assigns) do
     list_of_assigns
     |> Enum.map(fn
       {assigns, socket} ->
-        {_, updated_socket} = update(assigns, socket)
+        {_ok, updated_socket} = update(assigns, socket)
         updated_socket
 
       assigns when is_map(assigns) ->
@@ -16,12 +16,12 @@ defmodule TeiserverWeb.Components.PlayerListComponent do
     end)
   end
 
-  @impl true
+  @impl Phoenix.LiveComponent
   def mount(socket) do
     {:ok, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveComponent
   def update(assigns, socket) do
     clients =
       assigns[:clients]

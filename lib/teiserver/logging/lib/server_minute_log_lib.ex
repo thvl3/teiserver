@@ -1,16 +1,17 @@
 defmodule Teiserver.Logging.ServerMinuteLogLib do
-  use TeiserverWeb, :library
-
+  @moduledoc false
   alias Teiserver.Logging.ServerMinuteLog
 
+  use TeiserverWeb, :library
+
   @spec colours :: atom
-  def colours(), do: :warning2
+  def colours, do: :warning2
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-monitor-heart-rate"
+  def icon, do: "fa-solid fa-monitor-heart-rate"
 
   @spec get_server_minute_logs :: Ecto.Query.t()
-  def get_server_minute_logs() do
+  def get_server_minute_logs do
     from(logs in ServerMinuteLog)
   end
 
@@ -25,8 +26,8 @@ defmodule Teiserver.Logging.ServerMinuteLogLib do
   end
 
   @spec _search(Ecto.Query.t(), atom, any) :: Ecto.Query.t()
-  def _search(query, _, ""), do: query
-  def _search(query, _, nil), do: query
+  def _search(query, _key, ""), do: query
+  def _search(query, _key, nil), do: query
 
   def _search(query, :timestamp, timestamp) do
     from logs in query,

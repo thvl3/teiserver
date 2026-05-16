@@ -1,7 +1,10 @@
 defmodule Teiserver.OAuth.Plug.EnsureAuthenticated do
-  @behaviour Plug
+  @moduledoc false
+  alias Teiserver.OAuth
 
   import Plug.Conn
+
+  @behaviour Plug
 
   def init(opts), do: opts
 
@@ -16,7 +19,7 @@ defmodule Teiserver.OAuth.Plug.EnsureAuthenticated do
 
   def call(conn, opts) do
     with {:ok, raw_token} <- get_token(conn),
-         {:ok, token} <- Teiserver.OAuth.get_valid_token(raw_token) do
+         {:ok, token} <- OAuth.get_valid_token(raw_token) do
       if token.type == :access do
         assign(conn, :token, token) |> call(opts)
       else
@@ -52,14 +55,14 @@ defmodule Teiserver.OAuth.Plug.EnsureAuthenticated do
   defp get_token(conn) do
     case get_req_header(conn, "authorization") do
       ["Bearer " <> raw_token] -> {:ok, raw_token}
-      _ -> {:error, "invalid bearer token"}
+      _other -> {:error, "invalid bearer token"}
     end
   end
 
   defp has_all_scopes?(_token, nil), do: :ok
 
   defp has_all_scopes?(token, requested_scopes) do
-    diff = MapSet.difference(MapSet.new(requested_scopes), MapSet.new(token.scopes))
+    diff = requested_scopes |> MapSet.new() |> MapSet.difference(MapSet.new(token.scopes))
 
     if Enum.empty?(diff) do
       :ok

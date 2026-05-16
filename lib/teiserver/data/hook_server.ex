@@ -1,41 +1,61 @@
 defmodule Teiserver.HookServer do
-  use GenServer
+  @moduledoc false
   alias Phoenix.PubSub
+  alias Teiserver.Bridge.DiscordBridgeBot
+  alias Teiserver.Bridge.DiscordSystem
+  alias Teiserver.CacheUser
+  alias Teiserver.Communication
+  alias Teiserver.Moderation.RefreshUserRestrictionsTask
+  use GenServer
   require Logger
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, nil, opts)
   end
 
-  @impl true
-  def handle_info(%{channel: "global_moderation"} = data, state) do
+  @impl GenServer
+  def handle_info(ev, state) do
+    # internally, nostrum rate limiter has some pretty high wait time (10s)
+    # so make sure we let it do its thing
+    Task.async(fn -> do_handle_info(ev, state) end)
+    |> Task.await(:timer.seconds(15))
+  catch
+    :exit, {:timeout, details} ->
+      Logger.error("Timeout while processing hook for event #{inspect(ev)}, #{inspect(details)}")
+
+      event = Map.get(ev, :event)
+      should_restart? = event in [:new_report, :updated_report]
+      Logger.error("Attempting to restart the bridge")
+
+      if should_restart? do
+        DiscordSystem.restart("Automatic restart because #{inspect(event)} timed out")
+      end
+
+      {:noreply, state}
+  end
+
+  defp do_handle_info(%{channel: "global_moderation"} = data, state) do
     case data.event do
       :new_report ->
-        if Teiserver.Communication.use_discord?() do
-          Teiserver.Bridge.DiscordBridgeBot.new_report(data.report)
+        if Communication.use_discord?() do
+          DiscordBridgeBot.new_report(data.report)
         end
 
       :updated_report ->
-        if Teiserver.Communication.use_discord?() do
-          Teiserver.Bridge.DiscordBridgeBot.update_report(data.report)
+        if Communication.use_discord?() do
+          DiscordBridgeBot.update_report(data.report)
         end
 
       :new_action ->
-        Teiserver.Moderation.RefreshUserRestrictionsTask.refresh_user(data.action.target_id)
+        RefreshUserRestrictionsTask.refresh_user(data.action.target_id)
 
       :updated_action ->
-        Teiserver.Moderation.RefreshUserRestrictionsTask.refresh_user(data.action.target_id)
+        RefreshUserRestrictionsTask.refresh_user(data.action.target_id)
 
       :new_response ->
         :ok
 
       :updated_response ->
-        :ok
-
-      :new_proposal ->
-        :ok
-
-      :updated_proposal ->
         :ok
 
       :new_ban ->
@@ -52,7 +72,7 @@ defmodule Teiserver.HookServer do
     {:noreply, state}
   end
 
-  def handle_info({:account_hooks, event, payload, _reason}, state) do
+  defp do_handle_info({:account_hooks, event, payload, _reason}, state) do
     start_completed =
       Teiserver.cache_get(:application_metadata_cache, "teiserver_full_startup_completed") == true
 
@@ -63,10 +83,10 @@ defmodule Teiserver.HookServer do
         nil
 
       :create_user ->
-        Teiserver.CacheUser.recache_user(payload.id)
+        CacheUser.recache_user(payload.id)
 
       :update_user ->
-        Teiserver.CacheUser.recache_user(payload.id)
+        CacheUser.recache_user(payload.id)
 
       :create_report ->
         :ok
@@ -74,14 +94,14 @@ defmodule Teiserver.HookServer do
       :update_report ->
         :ok
 
-      _ ->
+      _unhandled_event ->
         throw("No HookServer account_hooks handler for event '#{event}'")
     end
 
     {:noreply, state}
   end
 
-  def handle_info(%{channel: "application", event: app_event}, state) do
+  defp do_handle_info(%{channel: "application", event: app_event}, state) do
     case app_event do
       :started ->
         :ok
@@ -102,16 +122,18 @@ defmodule Teiserver.HookServer do
 
         :ok
 
-      _ ->
+      _unhandled_app_event ->
         throw("No HookServer application handler for event '#{app_event}'")
     end
 
     {:noreply, state}
   end
 
-  @impl true
+  @impl GenServer
   @spec init(any) :: {:ok, %{}}
-  def init(_) do
+  def init(_opts) do
+    Logger.metadata(actor_type: :hook_server)
+
     if Application.get_env(:teiserver, Teiserver)[:enable_hooks] do
       :ok = PubSub.subscribe(Teiserver.PubSub, "account_hooks")
       :ok = PubSub.subscribe(Teiserver.PubSub, "global_moderation")

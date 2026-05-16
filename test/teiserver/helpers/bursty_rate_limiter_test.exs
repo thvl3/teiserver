@@ -1,7 +1,7 @@
 defmodule Teiserver.Helpers.BurstyRateLimiterTest do
-  use ExUnit.Case, async: true
-
   alias Teiserver.Helpers.BurstyRateLimiter, as: BRL
+
+  use ExUnit.Case, async: true
 
   test "must provide positive max_permits" do
     assert_raise ArgumentError, fn ->
@@ -15,7 +15,7 @@ defmodule Teiserver.Helpers.BurstyRateLimiterTest do
   end
 
   test "full by default" do
-    {:ok, _} = BRL.per_second(2) |> BRL.try_acquire(1)
+    {:ok, _limiter} = BRL.per_second(2) |> BRL.try_acquire(1)
   end
 
   test "cannot acquire when empty" do

@@ -1,7 +1,8 @@
 defmodule Teiserver.Account.FriendQueries do
   @moduledoc false
-  use TeiserverWeb, :queries
+
   alias Teiserver.Account.Friend
+  use TeiserverWeb, :queries
 
   @spec query_friends(list) :: Ecto.Query.t()
   def query_friends(args) do
@@ -26,8 +27,8 @@ defmodule Teiserver.Account.FriendQueries do
   end
 
   @spec _where(Ecto.Query.t(), atom(), any()) :: Ecto.Query.t()
-  defp _where(query, _, ""), do: query
-  defp _where(query, _, nil), do: query
+  defp _where(query, _key, ""), do: query
+  defp _where(query, _key, nil), do: query
 
   defp _where(query, :user1_id, from_id) do
     from friends in query,

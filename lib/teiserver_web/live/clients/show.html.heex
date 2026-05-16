@@ -24,12 +24,12 @@
         </h3>
 
         <ul>
-          <li>Bot: {Teiserver.CacheUser.is_bot?(@user)}</li>
-          <li>Moderator: {Teiserver.CacheUser.is_moderator?(@user)}</li>
+          <li>Bot: {Teiserver.Account.Auth.is_bot?(@user)}</li>
+          <li>Moderator: {Teiserver.Account.Auth.moderator?(@user)}</li>
           <li>
             Battle:
             <%= if @client != nil and @client.lobby_id != nil do %>
-              <.link navigate={Routes.ts_battle_lobby_show_path(@socket, :show, @client.lobby_id)}>
+              <.link navigate={~p"/battle/lobbies/show/#{@client.lobby_id}"}>
                 Battle #{@client.lobby_id}
               </.link>
               <%= if @current_client do %>

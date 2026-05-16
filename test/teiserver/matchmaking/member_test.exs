@@ -1,12 +1,23 @@
 defmodule Teiserver.Matchmaking.MemberTest do
+  alias Teiserver.Account
+  alias Teiserver.Game
+  alias Teiserver.Game.MatchRatingLib
+  alias Teiserver.Helpers.GeneralTestLib
+  alias Teiserver.Matchmaking.Member
+  alias Teiserver.Support.Tachyon
+
   use Teiserver.DataCase
 
-  alias Teiserver.Support.Tachyon
-  alias Teiserver.Matchmaking.Member
+  setup do
+    # Ensure the active season is set for the tests
+    TeiserverTestLib.clear_cache(:teiserver_game_rating_types)
+    TeiserverTestLib.teiserver_seed()
+    :ok
+  end
 
   describe "get_member_rating" do
     test "no rating for user" do
-      user = Central.Helpers.GeneralTestLib.make_user(%{"data" => %{"roles" => ["Verified"]}})
+      user = GeneralTestLib.make_user(%{"roles" => ["Verified"]})
 
       assert Member.get_member_rating([user.id], "Duel") == %{
                skill: 16.666666666666664,
@@ -29,7 +40,7 @@ defmodule Teiserver.Matchmaking.MemberTest do
   end
 
   defp rating_attrs(user_id, game_type, rating, uncertainty) do
-    rt = Teiserver.Game.get_rating_type_by_name!(game_type)
+    rt = Game.get_rating_type_by_name!(game_type)
 
     %{
       user_id: user_id,
@@ -40,12 +51,12 @@ defmodule Teiserver.Matchmaking.MemberTest do
       # leaderboard rating is irrelevant for these tests
       leaderboard_rating: 10,
       last_updated: DateTime.utc_now(),
-      season: Teiserver.Game.MatchRatingLib.active_season()
+      season: MatchRatingLib.active_season()
     }
   end
 
   defp set_rating!(attrs) do
-    {:ok, r} = Teiserver.Account.create_or_update_rating(attrs)
+    {:ok, r} = Account.create_or_update_rating(attrs)
     r
   end
 end

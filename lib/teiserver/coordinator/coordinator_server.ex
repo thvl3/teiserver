@@ -3,14 +3,27 @@ defmodule Teiserver.Coordinator.CoordinatorServer do
   The coordinator server is the interface point for the Coordinator system. Consuls are invisible (to the players) processes
   performing their actions in the name of the coordinator
   """
-  use GenServer
-  alias Teiserver.Config
-  alias Teiserver.{Account, CacheUser, Clans, Room, Coordinator, Client, Moderation, Telemetry}
-  alias Teiserver.Lobby
-  alias Teiserver.Coordinator.{CoordinatorCommands}
+
   alias Phoenix.PubSub
-  import Teiserver.Helper.TimexHelper, only: [date_to_str: 2]
+  alias Teiserver.Account
+  alias Teiserver.Account.Auth
+  alias Teiserver.Account.RecacheUserStatsTask
+  alias Teiserver.CacheUser
+  alias Teiserver.Client
+  alias Teiserver.Config
+  alias Teiserver.Coordinator
+  alias Teiserver.Coordinator.CoordinatorCommands
+  alias Teiserver.Coordinator.Parser
+  alias Teiserver.Lobby
+  alias Teiserver.Moderation
+  alias Teiserver.Room
+  alias Teiserver.Telemetry
+
+  use GenServer
+
   require Logger
+
+  import Teiserver.Helper.TimexHelper, only: [date_to_str: 2]
 
   @dispute_string [
     "If you feel you have been the target of an erroneous or unjust moderation action please use the #open-ticket channel in our discord to appeal/dispute the action.",
@@ -22,12 +35,12 @@ defmodule Teiserver.Coordinator.CoordinatorServer do
     GenServer.start_link(__MODULE__, opts[:data], [])
   end
 
-  @impl true
+  @impl GenServer
   def handle_call(:client_state, _from, state) do
     {:reply, state.client, state}
   end
 
-  @impl true
+  @impl GenServer
   def handle_cast({:update_client, new_client}, state) do
     {:noreply, %{state | client: new_client}}
   end
@@ -36,11 +49,10 @@ defmodule Teiserver.Coordinator.CoordinatorServer do
     {:noreply, %{state | client: Map.merge(state.client, partial_client)}}
   end
 
-  @impl true
+  @impl GenServer
   def handle_info(:begin, _state) do
     Logger.debug("Starting up Coordinator main server")
-    account = get_coordinator_account()
-    Teiserver.cache_put(:application_metadata_cache, "teiserver_coordinator_userid", account.id)
+    account = make_and_cache_coordinator_account()
 
     {user, client} =
       case CacheUser.internal_client_login(account.id) do
@@ -63,15 +75,6 @@ defmodule Teiserver.Coordinator.CoordinatorServer do
     ~w(main coordinator moderators)
     |> Enum.each(fn room_name ->
       Room.get_or_make_room(room_name, user.id)
-      Room.add_user_to_room(user.id, room_name)
-      :ok = PubSub.subscribe(Teiserver.PubSub, "room:#{room_name}")
-    end)
-
-    # Now join the clan channels
-    Clans.list_clans()
-    |> Enum.each(fn clan ->
-      room_name = Room.clan_room_name(clan.tag)
-      Room.get_or_make_room(room_name, user.id, clan.id)
       Room.add_user_to_room(user.id, room_name)
       :ok = PubSub.subscribe(Teiserver.PubSub, "room:#{room_name}")
     end)
@@ -108,7 +111,7 @@ defmodule Teiserver.Coordinator.CoordinatorServer do
     new_state =
       parts
       |> Enum.reduce(state, fn part, acc_state ->
-        {_, new_state} = handle_info({:direct_message, from_id, part}, acc_state)
+        {_reply, new_state} = handle_info({:direct_message, from_id, part}, acc_state)
         new_state
       end)
 
@@ -116,7 +119,7 @@ defmodule Teiserver.Coordinator.CoordinatorServer do
   end
 
   def handle_info({:direct_message, sender_id, "$" <> command}, state) do
-    cmd = Coordinator.Parser.parse_command(sender_id, "$#{command}")
+    cmd = Parser.parse_command(sender_id, "$#{command}")
     new_state = CoordinatorCommands.handle_command(cmd, state)
 
     {:noreply, new_state}
@@ -134,7 +137,7 @@ defmodule Teiserver.Coordinator.CoordinatorServer do
         Coordinator.cast_consul(lobby_id, {:hello_message, userid})
         Coordinator.send_to_user(userid, "Thank you, you've been marked as present.")
 
-      _ ->
+      _other ->
         :ok
     end
 
@@ -157,11 +160,11 @@ defmodule Teiserver.Coordinator.CoordinatorServer do
         Client.clear_awaiting_warn_ack(userid)
         CacheUser.send_direct_message(state.userid, userid, "Thank you")
 
-      _ ->
+      _other_message ->
         user = CacheUser.get_user_by_id(userid)
         Logger.info("CoordinatorServer unhandled DM from #{user.name} of: #{message}")
 
-        if not CacheUser.is_bot?(user) do
+        if not Auth.is_bot?(user) do
           CacheUser.send_direct_message(
             state.userid,
             userid,
@@ -197,7 +200,7 @@ defmodule Teiserver.Coordinator.CoordinatorServer do
   end
 
   def handle_info(%{channel: "client_inout", event: :disconnect, userid: userid}, state) do
-    Teiserver.Account.RecacheUserStatsTask.disconnected(userid)
+    RecacheUserStatsTask.disconnected(userid)
 
     {:noreply, state}
   end
@@ -206,6 +209,7 @@ defmodule Teiserver.Coordinator.CoordinatorServer do
 
   def handle_info({:do_client_inout, :login, userid}, state) do
     user = CacheUser.get_user_by_id(userid)
+    db_user = Account.get_user(userid)
 
     if user do
       # Do we have a system welcome message?
@@ -223,7 +227,7 @@ defmodule Teiserver.Coordinator.CoordinatorServer do
       end
 
       relevant_restrictions =
-        user.restrictions
+        db_user.restrictions
         |> Enum.filter(fn r -> not Enum.member?(["Bridging"], r) end)
 
       if not Enum.empty?(relevant_restrictions) do
@@ -271,7 +275,7 @@ defmodule Teiserver.Coordinator.CoordinatorServer do
           # Do we need an acknowledgement? If they are muted then no.
           msg =
             cond do
-              CacheUser.has_mute?(user) ->
+              Account.has_mute?(db_user) ->
                 msg ++ @dispute_string
 
               has_warning ->
@@ -315,8 +319,14 @@ defmodule Teiserver.Coordinator.CoordinatorServer do
     {:noreply, state}
   end
 
-  @spec get_coordinator_account() :: Teiserver.CacheUser.t()
-  def get_coordinator_account() do
+  def make_and_cache_coordinator_account do
+    account = get_coordinator_account()
+    Teiserver.cache_put(:application_metadata_cache, "teiserver_coordinator_userid", account.id)
+    account
+  end
+
+  @spec get_coordinator_account() :: Teiserver.CacheUser.t() | map()
+  def get_coordinator_account do
     user =
       Account.get_user(nil,
         search: [
@@ -354,9 +364,11 @@ defmodule Teiserver.Coordinator.CoordinatorServer do
     end
   end
 
-  @impl true
+  @impl GenServer
   @spec init(map()) :: {:ok, map()}
   def init(_opts) do
+    Process.flag(:trap_exit, true)
+
     Horde.Registry.register(
       Teiserver.ServerRegistry,
       "CoordinatorServer",
@@ -365,5 +377,10 @@ defmodule Teiserver.Coordinator.CoordinatorServer do
 
     send(self(), :begin)
     {:ok, %{client: %{}}}
+  end
+
+  @impl GenServer
+  def terminate(_reason, state) do
+    Client.disconnect(state.userid, "coordinator terminate")
   end
 end

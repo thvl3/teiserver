@@ -1,11 +1,18 @@
 defmodule TeiserverWeb.Battle.LobbyLive.Show do
-  use TeiserverWeb, :live_view
   alias Phoenix.PubSub
-  require Logger
-
+  alias Teiserver.Account
+  alias Teiserver.Battle
   alias Teiserver.Battle.BalanceLib
-  alias Teiserver.{Account, Battle, Coordinator, Lobby, CacheUser, Telemetry}
   alias Teiserver.Battle.MatchLib
+  alias Teiserver.CacheUser
+  alias Teiserver.Coordinator
+  alias Teiserver.Coordinator.Parser, as: CoordinatorParser
+  alias Teiserver.Helper.StylingHelper
+  alias Teiserver.Lobby
+  alias Teiserver.ServerUserPlug
+  alias Teiserver.Telemetry
+  use TeiserverWeb, :live_view
+  require Logger
   import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
 
   @extra_menu_content """
@@ -16,7 +23,7 @@ defmodule TeiserverWeb.Battle.LobbyLive.Show do
     </a>
   """
 
-  @impl true
+  @impl Phoenix.LiveView
   def mount(_params, session, socket) do
     socket =
       socket
@@ -39,7 +46,7 @@ defmodule TeiserverWeb.Battle.LobbyLive.Show do
 
     socket =
       socket
-      |> Teiserver.ServerUserPlug.live_call()
+      |> ServerUserPlug.live_call()
       |> add_breadcrumb(name: "Teiserver", url: "/teiserver")
       |> add_breadcrumb(name: "Battles", url: "/battle/lobbies")
       |> assign(:friends, friends)
@@ -59,12 +66,12 @@ defmodule TeiserverWeb.Battle.LobbyLive.Show do
     {:ok, socket}
   end
 
-  @impl true
-  def handle_params(_, _, %{assigns: %{current_user: nil}} = socket) do
+  @impl Phoenix.LiveView
+  def handle_params(_params, _url, %{assigns: %{current_user: nil}} = socket) do
     {:noreply, socket |> redirect(to: ~p"/")}
   end
 
-  def handle_params(%{"id" => id}, _, %{} = socket) do
+  def handle_params(%{"id" => id}, _url, %{} = socket) do
     id = int_parse(id)
     current_user = socket.assigns[:current_user]
 
@@ -80,9 +87,6 @@ defmodule TeiserverWeb.Battle.LobbyLive.Show do
 
     cond do
       lobby == nil ->
-        index_redirect(socket)
-
-      lobby.tournament ->
         index_redirect(socket)
 
       (lobby.locked or lobby.passworded) and not allow?(socket, "Moderator") ->
@@ -128,13 +132,13 @@ defmodule TeiserverWeb.Battle.LobbyLive.Show do
     # but only includes parties with 2 or more members
     parties =
       clients
-      |> Enum.map(fn {_, c} -> c end)
+      |> Enum.map(fn {_userid, c} -> c end)
       |> Enum.filter(fn c -> c.player end)
       |> Enum.group_by(fn m -> m.party_id end)
       |> Map.drop([nil])
       |> Map.filter(fn {_id, members} -> Enum.count(members) > 1 end)
       |> Map.keys()
-      |> Enum.zip(Teiserver.Helper.StylingHelper.bright_hex_colour_list())
+      |> Enum.zip(StylingHelper.bright_hex_colour_list())
       |> Map.new()
 
     stats =
@@ -148,14 +152,14 @@ defmodule TeiserverWeb.Battle.LobbyLive.Show do
 
     ratings =
       users
-      |> Map.new(fn {userid, _} ->
+      |> Map.new(fn {userid, _user} ->
         {userid, BalanceLib.get_user_rating_value_uncertainty_pair(userid, rating_type)}
       end)
 
     {users, clients, ratings, parties, stats}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_info(:tick, socket) do
     socket =
       if socket.assigns.lobby.in_progress do
@@ -176,10 +180,10 @@ defmodule TeiserverWeb.Battle.LobbyLive.Show do
   def handle_info({:battle_lobby_throttle, :closed}, socket) do
     {:noreply,
      socket
-     |> redirect(to: Routes.ts_battle_lobby_index_path(socket, :index))}
+     |> redirect(to: ~p"/battle/lobbies")}
   end
 
-  def handle_info({:liveview_lobby_update, :consul_server_updated, _, _}, socket) do
+  def handle_info({:liveview_lobby_update, :consul_server_updated, _lobby_id, _data}, socket) do
     consul_state = get_consul_state(socket)
 
     socket =
@@ -204,14 +208,14 @@ defmodule TeiserverWeb.Battle.LobbyLive.Show do
       |> assign(:consul, consul_state)
 
     # Players
-    # credo:disable-for-next-line Credo.Check.Design.TagTODO
+
     # TODO: This can likely be optimised somewhat
     socket =
       case player_changes do
         [] ->
           socket
 
-        _ ->
+        _changes ->
           players = Battle.get_lobby_member_list(assigns.id)
           {users, clients, ratings, parties, stats} = get_user_and_clients(players, consul_state)
 
@@ -229,17 +233,23 @@ defmodule TeiserverWeb.Battle.LobbyLive.Show do
     {:noreply, socket}
   end
 
-  def handle_info(%{channel: "teiserver_user_updates:" <> _}, %{assigns: %{id: id}} = socket) do
-    {:noreply, socket |> redirect(to: Routes.ts_battle_lobby_show_path(socket, :show, id))}
+  def handle_info(
+        %{channel: "teiserver_user_updates:" <> _user_id},
+        %{assigns: %{id: id}} = socket
+      ) do
+    {:noreply, socket |> redirect(to: ~p"/battle/lobbies/show/#{id}")}
   end
 
-  def handle_info(%{channel: "teiserver_client_messages:" <> _, event: :connected}, socket) do
+  def handle_info(%{channel: "teiserver_client_messages:" <> _user_id, event: :connected}, socket) do
     {:noreply,
      socket
      |> assign(:client, Account.get_client_by_id(socket.assigns[:current_user].id))}
   end
 
-  def handle_info(%{channel: "teiserver_client_messages:" <> _, event: :disconnected}, socket) do
+  def handle_info(
+        %{channel: "teiserver_client_messages:" <> _user_id, event: :disconnected},
+        socket
+      ) do
     {:noreply,
      socket
      |> assign(:client, nil)}
@@ -249,12 +259,12 @@ defmodule TeiserverWeb.Battle.LobbyLive.Show do
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_event("join", _, %{assigns: %{client: nil}} = socket) do
+  @impl Phoenix.LiveView
+  def handle_event("join", _params, %{assigns: %{client: nil}} = socket) do
     {:noreply, socket}
   end
 
-  def handle_event("join", _, %{assigns: assigns} = socket) do
+  def handle_event("join", _params, %{assigns: assigns} = socket) do
     if Battle.server_allows_join?(assigns.client.userid, assigns.id) == true do
       Battle.force_add_user_to_lobby(assigns.current_user.id, assigns.id)
     end
@@ -264,12 +274,12 @@ defmodule TeiserverWeb.Battle.LobbyLive.Show do
 
   def handle_event("send-to-host", %{"msg" => msg}, %{assigns: assigns} = socket) do
     from_id = Coordinator.get_coordinator_userid()
-    Teiserver.Coordinator.Parser.handle_in(from_id, msg, assigns.id)
+    CoordinatorParser.handle_in(from_id, msg, assigns.id)
 
     {:noreply, socket}
   end
 
-  def handle_event("force-update", _, %{assigns: %{id: id}} = socket) do
+  def handle_event("force-update", _params, %{assigns: %{id: id}} = socket) do
     battle = Lobby.get_lobby(id)
     consul_state = get_consul_state(id)
 
@@ -320,8 +330,9 @@ defmodule TeiserverWeb.Battle.LobbyLive.Show do
         _event,
         %{assigns: %{id: id, bar_user: _bar_user}} = socket
       ) do
-    Lobby.kick_user_from_battle(int_parse(target_id), id)
-    Telemetry.log_simple_server_event(int_parse(target_id), "lobby.kicked_from_web_interface")
+    parsed_id = int_parse(target_id)
+    Lobby.kick_user_from_battle(parsed_id, id)
+    Telemetry.log_simple_server_event(parsed_id, "lobby.kicked_from_web_interface")
     {:noreply, socket}
   end
 
@@ -352,6 +363,6 @@ defmodule TeiserverWeb.Battle.LobbyLive.Show do
   defp page_title(:show), do: "Show Battle"
 
   defp index_redirect(socket) do
-    {:noreply, socket |> redirect(to: Routes.ts_battle_lobby_index_path(socket, :index))}
+    {:noreply, socket |> redirect(to: ~p"/battle/lobbies")}
   end
 end

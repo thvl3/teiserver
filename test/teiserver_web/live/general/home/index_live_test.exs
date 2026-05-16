@@ -1,12 +1,16 @@
 defmodule TeiserverWeb.General.Home.IndexLiveTest do
   @moduledoc false
+
+  alias Teiserver.Helpers.GeneralTestLib
+  alias Teiserver.TeiserverTestLib
+
   use TeiserverWeb.ConnCase
 
   import Phoenix.LiveViewTest
 
-  defp auth_setup(_) do
-    Central.Helpers.GeneralTestLib.conn_setup()
-    |> Teiserver.TeiserverTestLib.conn_setup()
+  defp auth_setup(_context) do
+    GeneralTestLib.conn_setup()
+    |> TeiserverTestLib.conn_setup()
   end
 
   describe "Visit index without authentication" do

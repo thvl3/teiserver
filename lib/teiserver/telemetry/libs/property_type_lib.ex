@@ -1,7 +1,9 @@
 defmodule Teiserver.Telemetry.PropertyTypeLib do
   @moduledoc false
+
+  alias Teiserver.Telemetry.PropertyType
+  alias Teiserver.Telemetry.PropertyTypeQueries
   use TeiserverWeb, :library_newform
-  alias Teiserver.Telemetry.{PropertyType, PropertyTypeQueries}
 
   @spec icon :: String.t()
   def icon, do: "fa-solid fa-tags"
@@ -31,7 +33,7 @@ defmodule Teiserver.Telemetry.PropertyTypeLib do
 
           event_type.id
 
-        [%{id: id} | _] ->
+        [%{id: id} | _rest] ->
           id
       end
     end)

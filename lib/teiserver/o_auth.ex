@@ -1,21 +1,22 @@
 defmodule Teiserver.OAuth do
+  @moduledoc false
   alias Teiserver.Repo
 
   alias Teiserver.Bot.Bot
 
-  alias Teiserver.OAuth.{
-    Application,
-    Code,
-    Token,
-    Credential,
-    ApplicationQueries,
-    CodeQueries,
-    TokenQueries,
-    CredentialQueries
-  }
+  alias Teiserver.OAuth.Application
+  alias Teiserver.OAuth.ApplicationQueries
+  alias Teiserver.OAuth.Code
+  alias Teiserver.OAuth.CodeQueries
+  alias Teiserver.OAuth.Credential
+  alias Teiserver.OAuth.CredentialQueries
+  alias Teiserver.OAuth.Token
+  alias Teiserver.OAuth.TokenQueries
 
+  alias Plug.Conn
   alias Teiserver.Account.User
   alias Teiserver.Data.Types, as: T
+  alias Timex.Duration
 
   # @spec change_application(Application.t(), map() | nil) :: Ecto.Changeset
   def change_application(%Application{} = app, attrs \\ %{}) do
@@ -35,7 +36,7 @@ defmodule Teiserver.OAuth do
   @spec delete_application(Application.t()) :: :ok | {:error, term()}
   def delete_application(app) do
     case Repo.delete(app) do
-      {:ok, _} -> :ok
+      {:ok, _app} -> :ok
       {:error, err} -> {:error, err}
     end
   end
@@ -97,7 +98,7 @@ defmodule Teiserver.OAuth do
   defp localhost?("127.0.0.1"), do: true
   defp localhost?("::1"), do: true
   defp localhost?("0:0:0:0:0:0:0:1"), do: true
-  defp localhost?(_), do: false
+  defp localhost?(_host), do: false
 
   @doc """
   Some applications are not meant to allow authorization code grants
@@ -142,11 +143,11 @@ defmodule Teiserver.OAuth do
       # don't do any validation on the challenge yet, this is done when exchanging
       # the code for a token
       attrs = %{
-        value: Base.hex_encode32(:crypto.strong_rand_bytes(32)),
+        value: :crypto.strong_rand_bytes(32) |> Base.hex_encode32(),
         owner_id: user_id,
         application_id: app_id,
         scopes: attrs.scopes,
-        expires_at: Timex.add(now, Timex.Duration.from_minutes(5)),
+        expires_at: Timex.add(now, Duration.from_minutes(5)),
         redirect_uri: Map.get(attrs, :redirect_uri),
         challenge: Map.get(attrs, :challenge),
         challenge_method: Map.get(attrs, :challenge_method)
@@ -208,16 +209,16 @@ defmodule Teiserver.OAuth do
     scopes = opts[:scopes]
 
     if Enum.empty?(scopes) ||
-         not MapSet.subset?(MapSet.new(scopes), MapSet.new(application.scopes)) do
+         not (MapSet.new(scopes) |> MapSet.subset?(MapSet.new(application.scopes))) do
       {:error, :invalid_scope}
     else
       token_attrs =
         %{
-          value: Base.hex_encode32(:crypto.strong_rand_bytes(32), padding: false),
+          value: :crypto.strong_rand_bytes(32) |> Base.hex_encode32(padding: false),
           application_id: application.id,
           scopes: scopes,
           original_scopes: Map.get(application, :original_scopes, application.scopes),
-          expires_at: Timex.add(now, Timex.Duration.from_minutes(30)),
+          expires_at: Timex.add(now, Duration.from_minutes(30)),
           type: :access
         }
         |> Map.merge(owner_attr)
@@ -225,13 +226,13 @@ defmodule Teiserver.OAuth do
       refresh_attrs =
         if Keyword.get(opts, :create_refresh, true) do
           %{
-            value: Base.hex_encode32(:crypto.strong_rand_bytes(32), padding: false),
+            value: :crypto.strong_rand_bytes(32) |> Base.hex_encode32(padding: false),
             application_id: application.id,
             scopes: scopes,
             original_scopes: application.scopes,
             # there's no real recourse when the refresh token expires and it's
             # quite annoying, so make it "never" expire.
-            expires_at: Timex.add(now, Timex.Duration.from_days(365 * 100)),
+            expires_at: Timex.add(now, Duration.from_days(365 * 100)),
             type: :refresh,
             refresh_token: nil
           }
@@ -308,7 +309,7 @@ defmodule Teiserver.OAuth do
     end
   end
 
-  defp check_verifier(_, _), do: {:error, :invalid_verifier}
+  defp check_verifier(_code, _verifier), do: {:error, :invalid_verifier}
 
   # A-Z, a-z, 0-9, and the punctuation characters -._~
   defp valid_verifier(verifier) do
@@ -357,7 +358,7 @@ defmodule Teiserver.OAuth do
       {:error, :expired} ->
         {:error, :expired}
 
-      _ ->
+      _result ->
         token =
           if Ecto.assoc_loaded?(token.application) do
             token
@@ -427,7 +428,7 @@ defmodule Teiserver.OAuth do
   @spec delete_credential(Credential.t() | Credential.id()) :: :ok | {:error, term()}
   def delete_credential(%Credential{} = cred) do
     case Repo.delete(cred) do
-      {:ok, _} -> :ok
+      {:ok, _credential} -> :ok
       {:error, err} -> {:error, err}
     end
   end
@@ -469,7 +470,7 @@ defmodule Teiserver.OAuth do
   @spec delete_expired_codes(DateTime.t() | nil) :: non_neg_integer()
   def delete_expired_codes(now \\ nil) do
     now = now || DateTime.utc_now()
-    {count, _} = CodeQueries.base_query() |> CodeQueries.expired(now) |> Repo.delete_all()
+    {count, _deleted} = CodeQueries.base_query() |> CodeQueries.expired(now) |> Repo.delete_all()
     count
   end
 
@@ -479,7 +480,10 @@ defmodule Teiserver.OAuth do
   @spec delete_expired_tokens(DateTime.t() | nil) :: non_neg_integer()
   def delete_expired_tokens(now \\ nil) do
     now = now || DateTime.utc_now()
-    {count, _} = TokenQueries.base_query() |> TokenQueries.expired(now) |> Repo.delete_all()
+
+    {count, _deleted} =
+      TokenQueries.base_query() |> TokenQueries.expired(now) |> Repo.delete_all()
+
     count
   end
 
@@ -502,15 +506,15 @@ defmodule Teiserver.OAuth do
   @doc """
   Similar to Plug.BasicAuth.parse_basic_auth but compliant with OAuth special handling
   """
-  @spec parse_basic_auth(Plug.Conn.t()) ::
+  @spec parse_basic_auth(Conn.t()) ::
           {client_id :: String.t(), client_secret :: String.t()} | :error
-  def parse_basic_auth(%Plug.Conn{} = conn) do
-    with ["Basic " <> encoded_parts] <- Plug.Conn.get_req_header(conn, "authorization"),
+  def parse_basic_auth(%Conn{} = conn) do
+    with ["Basic " <> encoded_parts] <- Conn.get_req_header(conn, "authorization"),
          {:ok, decoded} <- Base.decode64(encoded_parts),
          [client_id, client_secret] <- :binary.split(decoded, ":") do
       {URI.decode_www_form(client_id), URI.decode_www_form(client_secret)}
     else
-      _ -> :error
+      _other -> :error
     end
   end
 
@@ -536,15 +540,17 @@ defmodule Teiserver.OAuth do
   @spec revoke_application_access(T.userid(), Application.id()) ::
           :ok | {:error, term()}
   def revoke_application_access(user_id, application_id) do
-    Repo.transaction(fn ->
-      _token_count =
-        ApplicationQueries.delete_user_application_tokens(user_id, application_id)
+    result =
+      Repo.transaction(fn ->
+        _token_count =
+          ApplicationQueries.delete_user_application_tokens(user_id, application_id)
 
-      _code_count = ApplicationQueries.delete_user_application_codes(user_id, application_id)
+        _code_count = ApplicationQueries.delete_user_application_codes(user_id, application_id)
 
-      :ok
-    end)
-    |> case do
+        :ok
+      end)
+
+    case result do
       {:ok, result} -> result
       {:error, reason} -> {:error, reason}
     end

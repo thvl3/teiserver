@@ -1,9 +1,9 @@
 defmodule Teiserver.Autohost.SessionRegistryTest do
+  alias Teiserver.Autohost.SessionRegistry
+
   use Teiserver.DataCase, async: false
 
   @moduletag :tachyon
-
-  alias Teiserver.Autohost.SessionRegistry
 
   test "set value also register" do
     SessionRegistry.set_value(1, 20, 10)
@@ -12,7 +12,7 @@ defmodule Teiserver.Autohost.SessionRegistryTest do
 
   test "can lookup" do
     SessionRegistry.set_value(1, 20, 10)
-    {_, %{id: 1, max_battles: 20, current_battles: 10}} = SessionRegistry.lookup(1)
+    {_pid, %{id: 1, max_battles: 20, current_battles: 10}} = SessionRegistry.lookup(1)
   end
 
   test "list all registered sessions" do

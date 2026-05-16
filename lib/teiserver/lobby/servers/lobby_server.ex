@@ -1,10 +1,18 @@
 defmodule Teiserver.Battle.LobbyServer do
   @moduledoc false
+
+  alias ExULID.ULID
+  alias Phoenix.PubSub
+  alias Teiserver.Account
+  alias Teiserver.Battle
+  alias Teiserver.Communication
+  alias Teiserver.Config
+  alias Teiserver.Coordinator
+  alias Teiserver.Lobby.CommandLib
+  alias Teiserver.Lobby.LobbyRestrictions
+  alias Teiserver.Telemetry
   use GenServer
   require Logger
-  alias Teiserver.{Account, Battle, Config, Telemetry, Coordinator, Communication}
-  alias Teiserver.Lobby.{CommandLib, LobbyRestrictions}
-  alias Phoenix.PubSub
 
   @player_list_cache_age_max 200
 
@@ -16,7 +24,7 @@ defmodule Teiserver.Battle.LobbyServer do
     map_name map_hash tags in_progress started_at
   )a
 
-  @impl true
+  @impl GenServer
   def handle_call(:get_lobby_state, _from, state) do
     result =
       Map.merge(state.lobby, %{
@@ -91,7 +99,7 @@ defmodule Teiserver.Battle.LobbyServer do
     {:reply, Enum.count(player_list), new_state}
   end
 
-  @impl true
+  @impl GenServer
   def handle_cast(:start_match, state) do
     player_list =
       state.member_list
@@ -249,7 +257,7 @@ defmodule Teiserver.Battle.LobbyServer do
     {:noreply, %{state | lobby: new_lobby}}
   end
 
-  def handle_cast({:enable_units, _}, %{lobby: %{disabled_units: []}} = state),
+  def handle_cast({:enable_units, _units}, %{lobby: %{disabled_units: []}} = state),
     do: {:noreply, state}
 
   def handle_cast({:enable_units, []}, state), do: {:noreply, state}
@@ -451,26 +459,29 @@ defmodule Teiserver.Battle.LobbyServer do
     {:noreply, %{state | bots: new_bots}}
   end
 
-  @impl true
+  @impl GenServer
   def handle_info(:tick, state) do
     state = check_lobby_values(state)
     {:noreply, state}
   end
 
   def handle_info(
-        %{channel: "teiserver_lobby_chat" <> _, userid: userid, message: "$" <> message},
+        %{channel: "teiserver_lobby_chat" <> _rest, userid: userid, message: "$" <> message},
         state
       ) do
     new_state = CommandLib.handle_command(state, userid, message)
     {:noreply, new_state}
   end
 
-  def handle_info(%{channel: "teiserver_lobby_chat" <> _, userid: userid, message: msg}, state) do
+  def handle_info(
+        %{channel: "teiserver_lobby_chat" <> _rest, userid: userid, message: msg},
+        state
+      ) do
     new_state =
       case msg do
-        "!spec " <> _ ->
+        "!spec " <> _args ->
           case Regex.run(~r/!spec (\S+)/, msg) do
-            [_, spectated_username] ->
+            [_full_match, spectated_username] ->
               spectated_id = Account.get_userid_from_name(spectated_username)
 
               Telemetry.log_complex_lobby_event(userid, state.match_id, "Spec command", %{
@@ -479,13 +490,13 @@ defmodule Teiserver.Battle.LobbyServer do
                 given_name: spectated_username
               })
 
-            _ ->
+            _no_match ->
               :ok
           end
 
           state
 
-        _ ->
+        _other ->
           state
       end
 
@@ -537,12 +548,10 @@ defmodule Teiserver.Battle.LobbyServer do
     consul_state = Coordinator.call_consul(state.id, :get_consul_state)
 
     teaser =
-      cond do
-        state.lobby.teaser == "" ->
-          ""
-
-        true ->
-          " " <> state.lobby.teaser
+      if state.lobby.teaser == "" do
+        ""
+      else
+        " " <> state.lobby.teaser
       end
 
     parts =
@@ -570,7 +579,7 @@ defmodule Teiserver.Battle.LobbyServer do
 
     broadcast_values =
       new_values
-      |> Map.filter(fn {k, _} ->
+      |> Map.filter(fn {k, _v} ->
         Enum.member?(@broadcast_update_keys, k)
       end)
 
@@ -644,7 +653,7 @@ defmodule Teiserver.Battle.LobbyServer do
     GenServer.start_link(__MODULE__, opts[:data], [])
   end
 
-  @impl true
+  @impl GenServer
   @spec init(map()) :: {:ok, map()}
   def init(%{lobby: %{id: id}} = data) do
     # Update the queue pids cache to point to this process
@@ -663,7 +672,7 @@ defmodule Teiserver.Battle.LobbyServer do
     {:ok, match} = Battle.create_match_from_founder_id(data.lobby.founder_id)
     match_uuid = Battle.generate_lobby_uuid([match.id])
 
-    server_uuid = ExULID.ULID.generate()
+    server_uuid = ULID.generate()
 
     options = %{
       "game/modoptions/ranked_game" => "1",

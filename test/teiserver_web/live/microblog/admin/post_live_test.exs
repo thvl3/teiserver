@@ -1,27 +1,31 @@
 defmodule TeiserverWeb.PostLiveTest do
   @moduledoc false
+
+  alias Teiserver.Helpers.GeneralTestLib
+  alias Teiserver.Microblog
+  alias Teiserver.TeiserverTestLib
+
   use TeiserverWeb.ConnCase
 
   import Phoenix.LiveViewTest
   import Teiserver.MicroblogFixtures
-  alias Teiserver.Microblog
 
   @create_attrs %{contents: "some contents", title: "some title"}
   @update_attrs %{contents: "some updated contents", title: "some updated title"}
   @invalid_attrs %{contents: nil, title: nil}
 
-  defp auth_setup(_) do
-    Teiserver.TeiserverTestLib.server_permissions()
-    |> Central.Helpers.GeneralTestLib.conn_setup()
-    |> Teiserver.TeiserverTestLib.conn_setup()
+  defp auth_setup(_context) do
+    TeiserverTestLib.server_permissions()
+    |> GeneralTestLib.conn_setup()
+    |> TeiserverTestLib.conn_setup()
   end
 
-  defp unauth_setup(_) do
-    Central.Helpers.GeneralTestLib.conn_setup()
-    |> Teiserver.TeiserverTestLib.conn_setup()
+  defp unauth_setup(_context) do
+    GeneralTestLib.conn_setup()
+    |> TeiserverTestLib.conn_setup()
   end
 
-  defp create_post(_) do
+  defp create_post(_context) do
     {post, tag, post_tag} = post_with_tag_fixture()
     %{post: post, tag: tag, post_tag: post_tag}
   end

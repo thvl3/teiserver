@@ -3,15 +3,16 @@ defmodule Teiserver.General.CacheClusterServer do
   This allows us to propogate data between nodes in the cluster to ensure the ETS
   tables are kept in sync.
   """
-  use GenServer
+
   alias Phoenix.PubSub
+  use GenServer
 
   @spec start_link(list) :: :ignore | {:error, any} | {:ok, pid}
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, nil, opts)
   end
 
-  @impl true
+  @impl GenServer
   def handle_info({:cluster_hooks, :insert_new, from_node, table, key, value}, state) do
     if from_node != Node.self() do
       ConCache.insert_new(table, key, value)
@@ -47,9 +48,9 @@ defmodule Teiserver.General.CacheClusterServer do
     {:noreply, state}
   end
 
-  @impl true
+  @impl GenServer
   @spec init(any) :: {:ok, %{}}
-  def init(_) do
+  def init(_opts) do
     :ok = PubSub.subscribe(Teiserver.PubSub, "cluster_hooks")
     {:ok, %{}}
   end

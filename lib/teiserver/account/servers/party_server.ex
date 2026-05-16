@@ -1,11 +1,13 @@
 defmodule Teiserver.Account.PartyServer do
+  @moduledoc false
+  alias Phoenix.PubSub
+  alias Teiserver.Account
+  alias Teiserver.Account.PartyLib
+  alias Teiserver.Data.Types, as: T
   use GenServer
   require Logger
-  alias Teiserver.{Account}
-  alias Phoenix.PubSub
-  alias Teiserver.Data.Types, as: T
 
-  @impl true
+  @impl GenServer
   def handle_call(:get_party, _from, state) do
     {:reply, state.party, state}
   end
@@ -30,7 +32,7 @@ defmodule Teiserver.Account.PartyServer do
     {:reply, result, %{state | party: new_party}}
   end
 
-  @impl true
+  @impl GenServer
   def handle_cast({:create_invite, userid}, %{party: party} = state) do
     new_party =
       cond do
@@ -78,29 +80,27 @@ defmodule Teiserver.Account.PartyServer do
 
   def handle_cast({:cancel_invite, userid}, %{party: party} = state) do
     new_party =
-      cond do
-        Enum.member?(party.pending_invites, userid) ->
-          Logger.debug("Cancelled invite for #{userid}")
+      if Enum.member?(party.pending_invites, userid) do
+        Logger.debug("Cancelled invite for #{userid}")
 
-          new_invites = List.delete(party.pending_invites, userid)
+        new_invites = List.delete(party.pending_invites, userid)
 
-          PubSub.broadcast(
-            Teiserver.PubSub,
-            "teiserver_party:#{party.id}",
-            %{
-              channel: "teiserver_party:#{party.id}",
-              event: :updated_values,
-              party_id: party.id,
-              new_values: %{pending_invites: new_invites},
-              operation: {:invite_cancelled, [userid]}
-            }
-          )
+        PubSub.broadcast(
+          Teiserver.PubSub,
+          "teiserver_party:#{party.id}",
+          %{
+            channel: "teiserver_party:#{party.id}",
+            event: :updated_values,
+            party_id: party.id,
+            new_values: %{pending_invites: new_invites},
+            operation: {:invite_cancelled, [userid]}
+          }
+        )
 
-          %{party | pending_invites: new_invites}
-
-        true ->
-          Logger.debug("Failed cancel invite for #{userid}, not a member")
-          party
+        %{party | pending_invites: new_invites}
+      else
+        Logger.debug("Failed cancel invite for #{userid}, not a member")
+        party
       end
 
     {:noreply, %{state | party: new_party}}
@@ -141,7 +141,7 @@ defmodule Teiserver.Account.PartyServer do
             }
           )
 
-          Teiserver.Account.PartyLib.stop_party_server(party.id)
+          PartyLib.stop_party_server(party.id)
           party
 
         true ->
@@ -154,14 +154,12 @@ defmodule Teiserver.Account.PartyServer do
 
   def handle_cast({:kick_member, userid}, %{party: party} = state) do
     new_party =
-      cond do
-        Enum.member?(party.members, userid) ->
-          Logger.debug("Kicking member #{userid}")
-          remove_member(userid, state)
-
-        true ->
-          Logger.debug("Failed to kicking member #{userid}, not a member")
-          party
+      if Enum.member?(party.members, userid) do
+        Logger.debug("Kicking member #{userid}")
+        remove_member(userid, state)
+      else
+        Logger.debug("Failed to kicking member #{userid}, not a member")
+        party
       end
 
     {:noreply, %{state | party: new_party}}
@@ -199,13 +197,13 @@ defmodule Teiserver.Account.PartyServer do
     {:noreply, %{state | party: new_party}}
   end
 
-  @impl true
+  @impl GenServer
   def handle_info(%{channel: "teiserver_client_messages:" <> userid, event: :disconnected}, state) do
     Logger.debug("Member disconnected: #{userid}")
     {:noreply, %{state | party: remove_member(String.to_integer(userid), state)}}
   end
 
-  def handle_info(%{channel: "teiserver_client_messages:" <> _}, state) do
+  def handle_info(%{channel: "teiserver_client_messages:" <> _userid}, state) do
     {:noreply, state}
   end
 
@@ -272,7 +270,7 @@ defmodule Teiserver.Account.PartyServer do
     Account.move_client_to_party(userid, nil)
 
     if Enum.empty?(new_members) do
-      Teiserver.Account.PartyLib.stop_party_server(party.id)
+      PartyLib.stop_party_server(party.id)
     end
 
     %{party | members: new_members, leader: new_leader}
@@ -283,7 +281,7 @@ defmodule Teiserver.Account.PartyServer do
     GenServer.start_link(__MODULE__, opts[:data], [])
   end
 
-  @impl true
+  @impl GenServer
   @spec init(map()) :: {:ok, map()}
   def init(%{party: %{id: id} = party}) do
     Horde.Registry.register(

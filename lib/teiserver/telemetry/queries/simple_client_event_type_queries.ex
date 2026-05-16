@@ -1,7 +1,8 @@
 defmodule Teiserver.Telemetry.SimpleClientEventTypeQueries do
   @moduledoc false
-  use TeiserverWeb, :queries
+
   alias Teiserver.Telemetry.SimpleClientEventType
+  use TeiserverWeb, :queries
 
   # Queries
   @spec query_simple_client_event_types(list) :: Ecto.Query.t()
@@ -27,8 +28,8 @@ defmodule Teiserver.Telemetry.SimpleClientEventTypeQueries do
   end
 
   @spec _where(Ecto.Query.t(), atom(), any()) :: Ecto.Query.t()
-  defp _where(query, _, ""), do: query
-  defp _where(query, _, nil), do: query
+  defp _where(query, _key, ""), do: query
+  defp _where(query, _key, nil), do: query
 
   defp _where(query, :id, id) do
     from simple_client_event_types in query,

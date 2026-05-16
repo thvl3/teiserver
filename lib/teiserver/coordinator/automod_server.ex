@@ -1,12 +1,18 @@
 defmodule Teiserver.Coordinator.AutomodServer do
   @moduledoc false
-  use GenServer
-  alias Teiserver.Config
-  import Teiserver.Logging.Helpers, only: [add_audit_log: 4]
-  alias Teiserver.{Account, CacheUser, Moderation, Coordinator, Client}
+
   alias Phoenix.PubSub
-  require Logger
+  alias Teiserver.Account
+  alias Teiserver.Account.Auth
+  alias Teiserver.Account.User
+  alias Teiserver.Client
+  alias Teiserver.Config
+  alias Teiserver.Coordinator
   alias Teiserver.Data.Types, as: T
+  alias Teiserver.Moderation
+  use GenServer
+  require Logger
+  import Teiserver.Logging.Helpers, only: [add_audit_log: 4]
 
   @tick_interval 60_000
 
@@ -16,18 +22,18 @@ defmodule Teiserver.Coordinator.AutomodServer do
   end
 
   @spec start_automod_server() :: :ok | {:failure, String.t()}
-  def start_automod_server() do
+  def start_automod_server do
     case Horde.Registry.lookup(Teiserver.ServerRegistry, "AutomodServer") do
-      [{_pid, _}] ->
+      [{_pid, _val}] ->
         {:failure, "Already started"}
 
-      _ ->
+      _other ->
         do_start()
     end
   end
 
   @spec do_start() :: :ok
-  defp do_start() do
+  defp do_start do
     {:ok, _automod_pid} =
       DynamicSupervisor.start_child(Teiserver.Coordinator.DynamicSupervisor, {
         Teiserver.Coordinator.AutomodServer,
@@ -96,7 +102,7 @@ defmodule Teiserver.Coordinator.AutomodServer do
         Account.create_smurf_key(msg.userid, "chobby_sysinfo_hash", msg.value)
         Account.update_cache_user(msg.userid, %{chobby_sysinfo_hash: msg.value})
 
-      _ ->
+      _property_type_name ->
         :ok
     end
 
@@ -131,37 +137,36 @@ defmodule Teiserver.Coordinator.AutomodServer do
   # Internal functions
   @spec check_wrapper(T.userid()) :: String.t()
   defp check_wrapper(userid) do
-    case Account.get_user_by_id(userid) do
-      nil ->
+    user = Account.get_user(userid)
+
+    cond do
+      user == nil ->
         "No user"
 
-      %{bot: true} ->
+      Auth.is_bot?(user) ->
         "Bot account"
 
-      %{moderator: true} ->
+      Auth.moderator?(user) ->
         "Moderator account"
 
-      user ->
-        cond do
-          Enum.member?(user.roles, "Developer") ->
-            "Developer account"
+      Auth.contributor?(user) ->
+        "Developer account"
 
-          Enum.member?(user.roles, "Trusted") ->
-            "Trusted account"
+      Enum.member?(user.roles, "Trusted") ->
+        "Trusted account"
 
-          true ->
-            do_check(user)
-        end
+      true ->
+        do_check(user)
     end
   end
 
-  @spec do_check(T.user() | T.userid()) :: String.t()
+  @spec do_check(T.userid() | User.t()) :: String.t()
   def do_check(userid) when is_integer(userid) do
-    do_check(Account.get_user_by_id(userid))
+    do_check(Account.get_user(userid))
   end
 
-  def do_check(user) do
-    if CacheUser.is_restricted?(user, ["Login"]) do
+  def do_check(%User{} = user) do
+    if Account.restricted?(user, ["Login"]) do
       "Already banned"
     else
       smurf_keys =
@@ -186,11 +191,11 @@ defmodule Teiserver.Coordinator.AutomodServer do
     end
   end
 
-  def enact_ban([], _), do: "No action"
+  def enact_ban([], _userid), do: "No action"
 
-  def enact_ban([ban | _], userid) do
+  def enact_ban([ban | _rest], userid) do
     user = Account.get_user!(userid)
-    {:ok, _} = Account.server_update_user(user, %{"smurf_of_id" => ban.source_id})
+    {:ok, _update_result} = Account.server_update_user(user, %{"smurf_of_id" => ban.source_id})
 
     add_audit_log(
       Coordinator.get_coordinator_userid(),
@@ -208,12 +213,12 @@ defmodule Teiserver.Coordinator.AutomodServer do
   end
 
   @spec get_automod_pid() :: pid() | nil
-  def get_automod_pid() do
+  def get_automod_pid do
     case Horde.Registry.lookup(Teiserver.ServerRegistry, "AutomodServer") do
-      [{pid, _}] ->
+      [{pid, _val}] ->
         pid
 
-      _ ->
+      _other ->
         nil
     end
   end

@@ -1,15 +1,16 @@
 defmodule Teiserver.Account.FriendRequestLib do
   @moduledoc false
-  alias Teiserver.Account
-  alias Account.FriendRequest
-  alias Teiserver.Data.Types, as: T
   alias Phoenix.PubSub
+  alias Teiserver.Account
+  alias Teiserver.Account.FriendRequest
+  alias Teiserver.Account.RelationshipLib
+  alias Teiserver.Data.Types, as: T
 
   @spec colours :: atom
-  def colours(), do: :success
+  def colours, do: :success
 
   @spec icon :: String.t()
-  def icon(), do: "fa-user-plus"
+  def icon, do: "fa-user-plus"
 
   @spec error_atom_to_user_friendly_string(atom() | String.t()) :: String.t()
   def error_atom_to_user_friendly_string(reason) do
@@ -36,7 +37,7 @@ defmodule Teiserver.Account.FriendRequestLib do
 
   @spec can_send_friend_request?(T.userid(), T.userid()) :: boolean
   def can_send_friend_request?(from_id, to_id) do
-    {result, _} = can_send_friend_request_with_reason?(from_id, to_id)
+    {result, _reason} = can_send_friend_request_with_reason?(from_id, to_id)
     result
   end
 
@@ -67,10 +68,10 @@ defmodule Teiserver.Account.FriendRequestLib do
       Account.does_a_avoid_b?(to_id, from_id) ->
         {false, :invalid_user}
 
-      Teiserver.Account.RelationshipLib.check_relationship_limit(from_id, :friend) != :ok ->
+      RelationshipLib.check_relationship_limit(from_id, :friend) != :ok ->
         {false, :outgoing_capacity_reached}
 
-      Teiserver.Account.RelationshipLib.check_relationship_limit(to_id, :friend) != :ok ->
+      RelationshipLib.check_relationship_limit(to_id, :friend) != :ok ->
         {false, :incoming_capacity_reached}
 
       true ->
@@ -115,7 +116,7 @@ defmodule Teiserver.Account.FriendRequestLib do
             {:error, "Failed to create friendship: #{inspect(changeset.errors)}"}
         end
 
-      _ ->
+      _other ->
         Account.delete_friend_request(req)
         :ok
     end
@@ -200,13 +201,13 @@ defmodule Teiserver.Account.FriendRequestLib do
 
   @spec list_incoming_friend_requests_of_userid(T.userid()) :: [T.userid()]
   def list_incoming_friend_requests_of_userid(userid) do
-    {_, incoming} = list_requests_for_user(userid)
+    {_outgoing, incoming} = list_requests_for_user(userid)
     Enum.map(incoming, fn incoming -> incoming.from_user_id end)
   end
 
   @spec list_outgoing_friend_requests_of_userid(T.userid()) :: [T.userid()]
   def list_outgoing_friend_requests_of_userid(userid) do
-    {outgoing, _} = list_requests_for_user(userid)
+    {outgoing, _incoming} = list_requests_for_user(userid)
     Enum.map(outgoing, fn outgoing -> outgoing.to_user_id end)
   end
 end

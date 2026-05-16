@@ -1,9 +1,14 @@
 defmodule Teiserver.Account.User do
   @moduledoc false
-  use TeiserverWeb, :schema
-  @behaviour Bodyguard.Policy
 
   alias Argon2
+  alias Teiserver.Account
+  alias Teiserver.CacheUser
+  alias Teiserver.Helper.StylingHelper
+
+  use TeiserverWeb, :schema
+
+  @behaviour Bodyguard.Policy
 
   typed_schema "account_users" do
     field :name, :string
@@ -35,7 +40,6 @@ defmodule Teiserver.Account.User do
     has_many :user_configs, Teiserver.Config.UserConfig
 
     # Extra user.ex relations go here
-    belongs_to :clan, Teiserver.Clans.Clan
     belongs_to :smurf_of, Teiserver.Account.User
 
     has_one :user_stat, Teiserver.Account.UserStat
@@ -43,13 +47,11 @@ defmodule Teiserver.Account.User do
     timestamps()
   end
 
-  def default_data() do
+  def default_data do
     %{
       rank: 0,
       country: "??",
-      moderator: false,
       bot: false,
-      verified: false,
       email_change_code: nil,
       last_login: nil,
       last_login_mins: nil,
@@ -59,7 +61,6 @@ defmodule Teiserver.Account.User do
       lobby_hash: [],
       hw_hash: nil,
       chobby_hash: nil,
-      roles: [],
       print_client_messages: false,
       print_server_messages: false,
       discord_id: nil,
@@ -79,7 +80,7 @@ defmodule Teiserver.Account.User do
     user
     |> cast(
       attrs,
-      ~w(name email password icon colour data roles permissions restrictions restricted_until shadowbanned last_login last_played last_logout discord_id discord_dm_channel_id steam_id smurf_of_id clan_id)a
+      ~w(name email password icon colour data roles permissions restrictions restricted_until shadowbanned last_login last_played last_logout discord_id discord_dm_channel_id steam_id smurf_of_id)a
     )
     |> validate_required([:name, :email, :password, :permissions])
     |> unique_constraint(:email)
@@ -95,12 +96,12 @@ defmodule Teiserver.Account.User do
     user
     |> cast(
       attrs,
-      ~w(name email password icon colour data roles permissions restrictions restricted_until shadowbanned last_login last_played last_logout discord_id discord_dm_channel_id steam_id smurf_of_id clan_id)a
+      ~w(name email password icon colour data roles permissions restrictions restricted_until shadowbanned last_login last_played last_logout discord_id discord_dm_channel_id steam_id smurf_of_id)a
     )
     |> validate_required([:name, :email, :password, :permissions])
     |> unique_constraint(:email)
     |> validate_change(:email, fn :email, email ->
-      case Teiserver.CacheUser.valid_email?(email) do
+      case CacheUser.valid_email?(email) do
         :ok -> []
         {:error, reason} -> [{:email, reason}]
       end
@@ -122,7 +123,7 @@ defmodule Teiserver.Account.User do
     user
     |> cast(
       attrs,
-      ~w(name email icon colour clan_id data roles permissions)a
+      ~w(name email icon colour data roles permissions)a
     )
     |> validate_required(~w(name email)a)
     |> unique_constraint(:email)
@@ -134,7 +135,7 @@ defmodule Teiserver.Account.User do
       |> remove_whitespace([:email])
 
     user
-    |> cast(attrs, ~w(name email icon colour data clan_id)a)
+    |> cast(attrs, ~w(name email icon colour data)a)
     |> validate_required([:name, :email])
     |> unique_constraint(:email)
   end
@@ -155,7 +156,7 @@ defmodule Teiserver.Account.User do
           "Please enter your password to change your account details."
         )
 
-      Teiserver.Account.verify_plain_password(attrs["password"], user.password) == false ->
+      Account.verify_plain_password(attrs["password"], user.password) == false ->
         user
         |> cast(attrs, [:name, :email])
         |> validate_required([:name, :email])
@@ -167,7 +168,7 @@ defmodule Teiserver.Account.User do
         |> validate_required([:name, :email])
         |> unique_constraint(:email)
         |> validate_change(:email, fn :email, email ->
-          case Teiserver.CacheUser.valid_email?(email) do
+          case CacheUser.valid_email?(email) do
             :ok -> []
             {:error, reason} -> [{:email, reason}]
           end
@@ -188,7 +189,7 @@ defmodule Teiserver.Account.User do
           "Please enter your existing password to change your password."
         )
 
-      Teiserver.Account.verify_plain_password(attrs["existing"], user.password) == false ->
+      Account.verify_plain_password(attrs["existing"], user.password) == false ->
         user
         |> change_plain_password(attrs)
         |> add_error(:existing, "Incorrect password")
@@ -221,8 +222,8 @@ defmodule Teiserver.Account.User do
     attrs =
       Map.merge(
         %{
-          "icon" => "fa-solid fa-" <> Teiserver.Helper.StylingHelper.random_icon(),
-          "colour" => Teiserver.Helper.StylingHelper.random_colour()
+          "icon" => "fa-solid fa-" <> StylingHelper.random_icon(),
+          "colour" => StylingHelper.random_colour()
         },
         attrs
       )
@@ -233,12 +234,12 @@ defmodule Teiserver.Account.User do
     user
     |> cast(
       attrs,
-      ~w(name email password icon colour data roles permissions restrictions restricted_until shadowbanned last_login last_played last_logout discord_id discord_dm_channel_id steam_id smurf_of_id clan_id)a
+      ~w(name email password icon colour data roles permissions restrictions restricted_until shadowbanned last_login last_played last_logout discord_id discord_dm_channel_id steam_id smurf_of_id)a
     )
     |> validate_required([:name, :email, :password, :permissions])
     |> unique_constraint(:email)
     |> validate_change(:email, fn :email, email ->
-      case Teiserver.CacheUser.valid_email?(email) do
+      case CacheUser.valid_email?(email) do
         :ok -> []
         {:error, reason} -> [{:email, reason}]
       end
@@ -247,7 +248,8 @@ defmodule Teiserver.Account.User do
       case password_type do
         :plain_password -> put_plain_password_hash(changeset)
         :md5_password -> put_md5_password_hash(changeset)
-        # Used when registering bots, the bot owner's password hash is passed and should be stored directly
+        # Used when registering bots, the bot owner's password
+        # hash is passed and should be stored directly
         :hash -> changeset
       end
     end)
@@ -261,8 +263,8 @@ defmodule Teiserver.Account.User do
     attrs =
       Map.merge(
         %{
-          "icon" => "fa-solid fa-" <> Teiserver.Helper.StylingHelper.random_icon(),
-          "colour" => Teiserver.Helper.StylingHelper.random_colour()
+          "icon" => "fa-solid fa-" <> StylingHelper.random_icon(),
+          "colour" => StylingHelper.random_colour()
         },
         attrs
       )
@@ -274,14 +276,14 @@ defmodule Teiserver.Account.User do
     |> validate_required([:name, :email, :password])
     |> validate_confirmation(:password, required: true, message: "Passwords do not match")
     |> validate_change(:name, fn :name, name ->
-      case Teiserver.Account.valid_name?(name, false) do
+      case Account.valid_name?(name, false) do
         :ok -> []
         {:error, reason} -> [{:name, reason}]
       end
     end)
     |> validate_password()
     |> validate_change(:email, fn :email, email ->
-      case Teiserver.CacheUser.valid_email?(email) do
+      case CacheUser.valid_email?(email) do
         :ok -> []
         {:error, reason} -> [{:email, reason}]
       end
@@ -314,8 +316,7 @@ defmodule Teiserver.Account.User do
          %Ecto.Changeset{valid?: true, changes: %{password: password}} = changeset
        ) do
     change(changeset,
-      password:
-        Teiserver.Account.spring_md5_password(password) |> Teiserver.Account.hash_password()
+      password: Account.spring_md5_password(password) |> Account.hash_password()
     )
   end
 
@@ -324,12 +325,11 @@ defmodule Teiserver.Account.User do
   defp put_md5_password_hash(
          %Ecto.Changeset{valid?: true, changes: %{password: password}} = changeset
        ) do
-    change(changeset, password: Teiserver.Account.hash_password(password))
+    change(changeset, password: Account.hash_password(password))
   end
 
   defp put_md5_password_hash(changeset), do: changeset
 
   @spec authorize(any, Plug.Conn.t(), atom) :: boolean
-  def authorize(_, conn, _), do: allow?(conn, "admin.user")
-  # def authorize(_, _, _), do: false
+  def authorize(_action, conn, _data), do: allow?(conn, "admin.user")
 end

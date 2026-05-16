@@ -8,6 +8,7 @@ defmodule TeiserverWeb.Report.ReportController do
   )
 
   plug Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Staff,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}
@@ -77,9 +78,6 @@ defmodule TeiserverWeb.Report.ReportController do
         "open_skill" ->
           Teiserver.Account.OpenSkillReport
 
-        "tournament" ->
-          Teiserver.Account.TournamentReport
-
         "microblog" ->
           Teiserver.Communication.MicroblogReport
 
@@ -87,11 +85,10 @@ defmodule TeiserverWeb.Report.ReportController do
         "moderation_activity" ->
           Teiserver.Moderation.ActivityReport
 
-        _ ->
+        _other ->
           raise "No handler for name of '#{name}'"
       end
 
-    # credo:disable-for-next-line Credo.Check.Refactor.Apply
     if allow?(conn.assigns.current_user, apply(module, :permissions, [])) do
       assigns =
         case module.run(conn, params) do
@@ -110,7 +107,7 @@ defmodule TeiserverWeb.Report.ReportController do
       |> render("#{name}.html")
     else
       conn
-      |> redirect(to: Routes.ts_reports_general_path(conn, :index))
+      |> redirect(to: ~p"/teiserver/reports")
     end
   end
 end

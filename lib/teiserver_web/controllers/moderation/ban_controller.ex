@@ -1,16 +1,24 @@
 defmodule TeiserverWeb.Moderation.BanController do
   @moduledoc false
+
+  alias Teiserver.Account
+  alias Teiserver.Account.AuthLib
+  alias Teiserver.Logging
+  alias Teiserver.Moderation
+  alias Teiserver.Moderation.ActionLib
+  alias Teiserver.Moderation.Ban
+  alias Teiserver.Moderation.BanLib
+  alias Teiserver.Moderation.RefreshUserRestrictionsTask
+
   use TeiserverWeb, :controller
 
-  alias Teiserver.Logging
-  alias Teiserver.{Account, Moderation}
-  alias Teiserver.Moderation.{Ban, BanLib, ActionLib}
   import Teiserver.Helper.StringHelper, only: [get_hash_id: 1]
 
   plug Bodyguard.Plug.Authorize,
-    policy: Teiserver.Moderation.Ban,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
+    policy: Ban,
     action: {Phoenix.Controller, :action_name},
-    user: {Teiserver.Account.AuthLib, :current_user}
+    user: {AuthLib, :current_user}
 
   plug(AssignPlug,
     site_menu_active: "moderation",
@@ -88,7 +96,7 @@ defmodule TeiserverWeb.Moderation.BanController do
     |> assign(:ban, ban)
     |> assign(:logs, logs)
     |> assign(:targets, targets)
-    |> assign(:user_stats, Teiserver.Account.get_user_stat_data(ban.source_id))
+    |> assign(:user_stats, Account.get_user_stat_data(ban.source_id))
     |> add_breadcrumb(name: "Show: #{ban.source.name}", url: conn.request_path)
     |> render("show.html")
   end
@@ -98,7 +106,7 @@ defmodule TeiserverWeb.Moderation.BanController do
     user =
       cond do
         Integer.parse(user_str) != :error ->
-          {user_id, _} = Integer.parse(user_str)
+          {user_id, _rest} = Integer.parse(user_str)
           Account.get_user(user_id)
 
         get_hash_id(user_str) != nil ->
@@ -120,7 +128,7 @@ defmodule TeiserverWeb.Moderation.BanController do
 
       existing_ban != nil ->
         conn
-        |> redirect(to: Routes.moderation_ban_path(conn, :show, existing_ban.id))
+        |> redirect(to: ~p"/moderation/ban/#{existing_ban.id}")
 
       true ->
         matching_users =
@@ -131,7 +139,7 @@ defmodule TeiserverWeb.Moderation.BanController do
           |> Enum.uniq()
           |> Enum.map(fn userid -> Account.get_user_by_id(userid) end)
           |> Enum.reject(fn user ->
-            Teiserver.CacheUser.is_restricted?(user, ["Login", "All lobbies", "All chat"])
+            Account.restricted?(user, ["Login", "All lobbies", "All chat"])
           end)
 
         all_user_keys =
@@ -145,16 +153,6 @@ defmodule TeiserverWeb.Moderation.BanController do
           )
 
         key_types = Account.list_smurf_key_types(limit: :infinity)
-
-        # Update their hw_key
-        hw_fingerprint =
-          user.id
-          |> Account.get_user_stat_data()
-          |> Teiserver.Account.CalculateSmurfKeyTask.calculate_hw1_fingerprint()
-
-        Account.update_user_stat(user.id, %{
-          hw_fingerprint: hw_fingerprint
-        })
 
         user_stats =
           case Account.get_user_stat(user.id) do
@@ -210,11 +208,11 @@ defmodule TeiserverWeb.Moderation.BanController do
 
         ActionLib.maybe_create_discord_post(action)
 
-        Teiserver.Moderation.RefreshUserRestrictionsTask.refresh_user(ban.source_id)
+        RefreshUserRestrictionsTask.refresh_user(ban.source_id)
 
         conn
         |> put_flash(:info, "Ban created successfully.")
-        |> redirect(to: Routes.moderation_ban_path(conn, :index))
+        |> redirect(to: ~p"/moderation/ban")
 
       {:error, %Ecto.Changeset{} = changeset} ->
         user = Account.get_user(ban_params["source_id"])
@@ -227,7 +225,7 @@ defmodule TeiserverWeb.Moderation.BanController do
           |> Enum.uniq()
           |> Enum.map(fn userid -> Account.get_user_by_id(userid) end)
           |> Enum.reject(fn user ->
-            Teiserver.CacheUser.is_restricted?(user, ["Login"])
+            Account.restricted?(user, ["Login"])
           end)
 
         all_user_keys =
@@ -241,16 +239,6 @@ defmodule TeiserverWeb.Moderation.BanController do
           )
 
         key_types = Account.list_smurf_key_types(limit: :infinity)
-
-        # Update their hw_key
-        hw_fingerprint =
-          user.id
-          |> Account.get_user_stat_data()
-          |> Teiserver.Account.CalculateSmurfKeyTask.calculate_hw1_fingerprint()
-
-        Account.update_user_stat(user.id, %{
-          hw_fingerprint: hw_fingerprint
-        })
 
         user_stats =
           case Account.get_user_stat(user.id) do
@@ -349,7 +337,7 @@ defmodule TeiserverWeb.Moderation.BanController do
 
         conn
         |> put_flash(:info, "Ban enabled.")
-        |> redirect(to: Routes.moderation_ban_path(conn, :index))
+        |> redirect(to: ~p"/moderation/ban")
     end
   end
 
@@ -363,7 +351,7 @@ defmodule TeiserverWeb.Moderation.BanController do
 
         conn
         |> put_flash(:info, "Ban disabled.")
-        |> redirect(to: Routes.moderation_ban_path(conn, :index))
+        |> redirect(to: ~p"/moderation/ban")
     end
   end
 

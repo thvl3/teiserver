@@ -1,7 +1,8 @@
 defmodule Teiserver.Telemetry.PropertyTypeQueries do
   @moduledoc false
-  use TeiserverWeb, :queries
+
   alias Teiserver.Telemetry.PropertyType
+  use TeiserverWeb, :queries
 
   # Queries
   @spec query_property_types(list) :: Ecto.Query.t()
@@ -27,8 +28,8 @@ defmodule Teiserver.Telemetry.PropertyTypeQueries do
   end
 
   @spec _where(Ecto.Query.t(), atom(), any()) :: Ecto.Query.t()
-  defp _where(query, _, ""), do: query
-  defp _where(query, _, nil), do: query
+  defp _where(query, _key, ""), do: query
+  defp _where(query, _key, nil), do: query
 
   defp _where(query, :id, id) do
     from property_types in query,

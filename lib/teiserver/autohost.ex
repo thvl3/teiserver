@@ -1,11 +1,12 @@
 defmodule Teiserver.Autohost do
+  @moduledoc false
   alias Teiserver.Autohost.Session
   alias Teiserver.Autohost.SessionRegistry
   alias Teiserver.Autohost.TachyonHandler
   alias Teiserver.Bot.Bot
   alias Teiserver.BotQueries
-  alias Teiserver.TachyonBattle
   alias Teiserver.Data.Types, as: T
+  alias Teiserver.TachyonBattle
 
   @type id :: Teiserver.Bot.Bot.id()
   @type reg_value :: SessionRegistry.reg_value()
@@ -16,6 +17,7 @@ defmodule Teiserver.Autohost do
           required(:map_name) => String.t(),
           required(:start_pos_type) => :fixed | :random | :ingame | :beforegame,
           required(:ally_teams) => [ally_team(), ...],
+          optional(:game_options) => %{String.t() => String.t()},
           optional(:spectators) => [player()],
           optional(:bots) => [bot()]
         }
@@ -89,8 +91,8 @@ defmodule Teiserver.Autohost do
     if autohost_val == nil, do: nil, else: autohost_val[:id]
   end
 
-  @spec start_battle(Bot.id(), Teiserver.TachyonBattle.id(), pid(), start_script()) ::
-          {:ok, start_response()} | {:error, term()}
+  @spec start_battle(Bot.id(), TachyonBattle.id(), pid(), start_script()) ::
+          {:ok, autohost_pid :: pid(), start_response()} | {:error, term()}
   defdelegate start_battle(bot_id, battle_id, battle_pid, start_script),
     to: Session
 
@@ -101,6 +103,9 @@ defmodule Teiserver.Autohost do
   @spec kill_battle(pid(), TachyonBattle.id()) :: :ok
   defdelegate kill_battle(autohost, battle_id),
     to: Teiserver.Autohost.Session
+
+  @spec add_player(pid(), TachyonBattle.Types.add_player_data()) :: :ok | {:error, term()}
+  defdelegate add_player(session_pid, add_data), to: Session
 
   @spec ack_update_event(pid(), TachyonBattle.id(), DateTime.t()) :: :ok
   defdelegate ack_update_event(session_pid, battle_id, timestamp), to: Teiserver.Autohost.Session

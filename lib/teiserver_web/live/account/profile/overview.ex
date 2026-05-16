@@ -1,47 +1,48 @@
 defmodule TeiserverWeb.Account.ProfileLive.Overview do
   @moduledoc false
 
-  use TeiserverWeb, :live_view
-
   alias Phoenix.PubSub
   alias Teiserver.Account
-  alias Teiserver.Lobby
   alias Teiserver.Account.AccoladeLib
+  alias Teiserver.Account.FriendRequestLib
+  alias Teiserver.Account.RoleLib
+  alias Teiserver.Account.UserLib
+  alias Teiserver.Lobby
 
-  @impl true
+  use TeiserverWeb, :live_view
+
+  @impl Phoenix.LiveView
   def mount(%{"userid" => userid_str}, _session, socket) do
     userid = String.to_integer(userid_str)
     user = Account.get_user_by_id(userid)
 
     socket =
-      cond do
-        user == nil ->
-          socket
-          |> put_flash(:info, "Unable to find that user")
-          |> redirect(to: ~p"/")
+      if is_nil(user) do
+        socket
+        |> put_flash(:info, "Unable to find that user")
+        |> redirect(to: ~p"/")
+      else
+        :ok =
+          PubSub.subscribe(
+            Teiserver.PubSub,
+            "teiserver_client_messages:#{userid}"
+          )
 
-        true ->
-          :ok =
-            PubSub.subscribe(
-              Teiserver.PubSub,
-              "teiserver_client_messages:#{userid}"
-            )
-
-          socket
-          |> assign(:tab, nil)
-          |> assign(:site_menu_active, "teiserver_account")
-          |> assign(:view_colour, Teiserver.Account.UserLib.colours())
-          |> assign(:user, user)
-          |> assign(:role_data, Account.RoleLib.role_data())
-          |> assign(:client, Account.get_client_by_id(userid))
-          |> get_relationships_and_permissions()
-          |> assign_accolade_notification()
+        socket
+        |> assign(:tab, nil)
+        |> assign(:site_menu_active, "teiserver_account")
+        |> assign(:view_colour, UserLib.colours())
+        |> assign(:user, user)
+        |> assign(:role_data, RoleLib.role_data())
+        |> assign(:client, Account.get_client_by_id(userid))
+        |> get_relationships_and_permissions()
+        |> assign_accolade_notification()
       end
 
     {:ok, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_params(params, _url, socket) do
     {:noreply, apply_action(socket, socket.assigns.live_action, params)}
   end
@@ -56,13 +57,8 @@ defmodule TeiserverWeb.Account.ProfileLive.Overview do
     |> assign(:page_title, "#{user.name} - Accolades")
   end
 
-  defp apply_action(%{assigns: %{user: user}} = socket, :achievements, _params) do
-    socket
-    |> assign(:page_title, "#{user.name} - Achievements")
-  end
-
-  @impl true
-  def handle_info(%{channel: "teiserver_client_messages:" <> _, event: :connected}, socket) do
+  @impl Phoenix.LiveView
+  def handle_info(%{channel: "teiserver_client_messages:" <> _user_id, event: :connected}, socket) do
     user_id = socket.assigns.user.id
 
     socket = assign(socket, :client, Account.get_client_by_id(user_id))
@@ -70,11 +66,17 @@ defmodule TeiserverWeb.Account.ProfileLive.Overview do
     {:noreply, socket}
   end
 
-  def handle_info(%{channel: "teiserver_client_messages:" <> _, event: :disconnected}, socket) do
+  def handle_info(
+        %{channel: "teiserver_client_messages:" <> _user_id, event: :disconnected},
+        socket
+      ) do
     {:noreply, assign(socket, :client, nil)}
   end
 
-  def handle_info(%{channel: "teiserver_client_messages:" <> _, event: :client_updated}, socket) do
+  def handle_info(
+        %{channel: "teiserver_client_messages:" <> _user_id, event: :client_updated},
+        socket
+      ) do
     user_id = socket.assigns.user.id
 
     socket = assign(socket, :client, Account.get_client_by_id(user_id))
@@ -82,11 +84,11 @@ defmodule TeiserverWeb.Account.ProfileLive.Overview do
     {:noreply, socket}
   end
 
-  def handle_info(%{channel: "teiserver_client_messages:" <> _}, socket) do
+  def handle_info(%{channel: "teiserver_client_messages:" <> _rest}, socket) do
     {:noreply, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_event("join", _params, %{assigns: assigns} = socket) do
     current_user_id = assigns.current_user.id
     lobby_id = assigns.client.lobby_id
@@ -153,7 +155,7 @@ defmodule TeiserverWeb.Account.ProfileLive.Overview do
       ) do
     socket =
       case Account.ignore_user(current_user.id, user.id) do
-        {:ok, _} ->
+        {:ok, _result} ->
           socket
           |> put_flash(:success, "You are now ignoring #{user.name}")
           |> get_relationships_and_permissions()
@@ -189,7 +191,7 @@ defmodule TeiserverWeb.Account.ProfileLive.Overview do
       ) do
     socket =
       case Account.avoid_user(current_user.id, user.id) do
-        {:ok, _} ->
+        {:ok, _result} ->
           socket
           |> put_flash(:success, "You are now avoiding #{user.name}")
           |> get_relationships_and_permissions()
@@ -210,7 +212,7 @@ defmodule TeiserverWeb.Account.ProfileLive.Overview do
       ) do
     socket =
       case Account.block_user(current_user.id, user.id) do
-        {:ok, _} ->
+        {:ok, _result} ->
           socket
           |> put_flash(:success, "You are now blocking #{user.name}")
           |> get_relationships_and_permissions()
@@ -314,7 +316,7 @@ defmodule TeiserverWeb.Account.ProfileLive.Overview do
         %{assigns: %{current_user: current_user, user: user}} = socket
       ) do
     case Account.create_friend_request(current_user.id, user.id) do
-      {:ok, _} ->
+      {:ok, _result} ->
         socket =
           socket
           |> put_flash(:success, "Friend request sent")
@@ -324,7 +326,7 @@ defmodule TeiserverWeb.Account.ProfileLive.Overview do
 
       {:error, reason} ->
         user_friendly_message =
-          Teiserver.Account.FriendRequestLib.error_atom_to_user_friendly_string(reason)
+          FriendRequestLib.error_atom_to_user_friendly_string(reason)
 
         socket =
           socket
@@ -427,7 +429,7 @@ defmodule TeiserverWeb.Account.ProfileLive.Overview do
     else
       # Goes here if the viewed user is not the same as the logged in user
       # Or if there are no recent accolades
-      _ -> nil
+      _other -> nil
     end
   end
 end

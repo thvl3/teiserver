@@ -1,4 +1,5 @@
 defmodule Teiserver.Account.BadgeType do
+  @moduledoc false
   use TeiserverWeb, :schema
 
   typed_schema "teiserver_account_badge_types" do
@@ -27,5 +28,5 @@ defmodule Teiserver.Account.BadgeType do
   end
 
   @spec authorize(atom(), Plug.Conn.t(), map()) :: bool()
-  def authorize(_, conn, _), do: allow?(conn, "Admin")
+  def authorize(_action, conn, _data), do: allow?(conn, "Admin")
 end

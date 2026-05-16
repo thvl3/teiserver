@@ -3,16 +3,16 @@ defmodule Teiserver.TachyonLobby.System do
   All the processes and supervisors to support lobbies (creation and listing)
   """
 
-  use Supervisor
-
   alias Teiserver.TachyonLobby
+
+  use Supervisor
 
   def start_link(init_arg) do
     Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
   end
 
-  @impl true
-  def init(_) do
+  @impl Supervisor
+  def init(_arg) do
     children = [
       TachyonLobby.Registry,
       TachyonLobby.Supervisor,

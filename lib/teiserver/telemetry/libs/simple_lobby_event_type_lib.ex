@@ -1,7 +1,9 @@
 defmodule Teiserver.Telemetry.SimpleLobbyEventTypeLib do
   @moduledoc false
+
+  alias Teiserver.Telemetry.SimpleLobbyEventType
+  alias Teiserver.Telemetry.SimpleLobbyEventTypeQueries
   use TeiserverWeb, :library_newform
-  alias Teiserver.Telemetry.{SimpleLobbyEventType, SimpleLobbyEventTypeQueries}
 
   # Helper function
   @spec get_or_add_simple_lobby_event_type(String.t()) :: non_neg_integer()
@@ -25,7 +27,7 @@ defmodule Teiserver.Telemetry.SimpleLobbyEventTypeLib do
 
           event_type.id
 
-        [%{id: id} | _] ->
+        [%{id: id} | _rest] ->
           id
       end
     end)

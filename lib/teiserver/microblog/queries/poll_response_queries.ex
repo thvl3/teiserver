@@ -1,8 +1,9 @@
 defmodule Teiserver.Microblog.PollResponseQueries do
   @moduledoc false
-  use TeiserverWeb, :queries
-  alias Teiserver.Microblog.PollResponse
+
   alias Teiserver.Helper.QueryHelpers
+  alias Teiserver.Microblog.PollResponse
+  use TeiserverWeb, :queries
 
   # Queries
   @spec query_poll_responses(list) :: Ecto.Query.t()
@@ -26,8 +27,8 @@ defmodule Teiserver.Microblog.PollResponseQueries do
   end
 
   @spec _where(Ecto.Query.t(), atom(), any()) :: Ecto.Query.t()
-  defp _where(query, _, ""), do: query
-  defp _where(query, _, nil), do: query
+  defp _where(query, _key, ""), do: query
+  defp _where(query, _key, nil), do: query
 
   defp _where(query, :id, id) do
     from poll_responses in query,

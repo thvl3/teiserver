@@ -5,13 +5,24 @@ defmodule Teiserver.Protocols.SpringOut do
   Protocol definition:
   https://springrts.com/dl/LobbyProtocol/ProtocolDescription.html
   """
-  require Logger
+
   alias Phoenix.PubSub
-  alias Teiserver.{Account, CacheUser, Client, Room, Battle, Coordinator, Config}
+  alias Teiserver.Account
+  alias Teiserver.Account.Auth
+  alias Teiserver.Battle
+  alias Teiserver.Client
+  alias Teiserver.Config
+  alias Teiserver.Coordinator
+  alias Teiserver.Data.Types, as: T
   alias Teiserver.Lobby
   alias Teiserver.Protocols.Spring
-  alias Teiserver.Protocols.Spring.{BattleOut, LobbyPolicyOut, UserOut, SystemOut, PartyOut}
-  alias Teiserver.Data.Types, as: T
+  alias Teiserver.Protocols.Spring.BattleOut
+  alias Teiserver.Protocols.Spring.PartyOut
+  alias Teiserver.Protocols.Spring.SystemOut
+  alias Teiserver.Protocols.Spring.UserOut
+  alias Teiserver.Room
+  alias Teiserver.SpringTcpServer
+  require Logger
 
   @motd """
   Message of the day
@@ -34,7 +45,6 @@ defmodule Teiserver.Protocols.SpringOut do
     msg =
       case namespace do
         :battle -> BattleOut.do_reply(reply_cmd, data, state)
-        :lobby_policy -> LobbyPolicyOut.do_reply(reply_cmd, data, state)
         :user -> UserOut.do_reply(reply_cmd, data, state)
         :system -> SystemOut.do_reply(reply_cmd, data, state)
         :spring -> do_reply(reply_cmd, data)
@@ -73,7 +83,7 @@ defmodule Teiserver.Protocols.SpringOut do
     "ACCEPTED #{user}\n"
   end
 
-  defp do_reply(:login_queued, _) do
+  defp do_reply(:login_queued, _data) do
     "QUEUED\n"
   end
 
@@ -222,7 +232,7 @@ defmodule Teiserver.Protocols.SpringOut do
         "none" -> 0
         "holepunch" -> 1
         "fixed" -> 2
-        _ -> 0
+        _other -> 0
       end
 
     passworded = if battle.password == nil, do: 0, else: 1
@@ -268,7 +278,7 @@ defmodule Teiserver.Protocols.SpringOut do
     do_reply(:update_battle, Battle.get_lobby(lobby_id))
   end
 
-  defp do_reply(:update_battle, _), do: ""
+  defp do_reply(:update_battle, _lobby), do: ""
 
   defp do_reply(:join_battle_success, battle) do
     "JOINBATTLE #{battle.id} #{battle.game_hash}\n"
@@ -372,12 +382,13 @@ defmodule Teiserver.Protocols.SpringOut do
 
   # Commands
   defp do_reply(:ring, {ringer_id, state_userid}) do
-    ringer_user = Account.get_user_by_id(ringer_id)
+    ringer_user = Account.get_user(ringer_id)
 
     do_ring =
       cond do
-        CacheUser.is_moderator?(ringer_user) == true -> true
-        CacheUser.is_bot?(ringer_user) == true -> true
+        Auth.admin?(ringer_user) == true -> true
+        Auth.moderator?(ringer_user) == true -> true
+        Auth.is_bot?(ringer_user) == true -> true
         Account.does_a_ignore_b?(state_userid, ringer_id) -> false
         true -> true
       end
@@ -469,10 +480,9 @@ defmodule Teiserver.Protocols.SpringOut do
   end
 
   defp do_reply(:direct_message, {from_id, messages, state_user}) when is_list(messages) do
-    from_user = Account.get_user_by_id(from_id)
-
     if not Account.does_a_ignore_b?(state_user.id, from_id) or
-         CacheUser.is_moderator?(from_user) == true do
+         Auth.admin?(from_id) or
+         Auth.moderator?(from_id) do
       from_name = Account.get_username_by_id(from_id)
 
       messages
@@ -491,8 +501,9 @@ defmodule Teiserver.Protocols.SpringOut do
     from_user = Account.get_user_by_id(from_id)
 
     if not Account.does_a_ignore_b?(state_user.id, from_id) or
-         CacheUser.is_moderator?(from_user) == true or
-         CacheUser.is_bot?(from_user) == true do
+         Auth.admin?(from_user) or
+         Auth.moderator?(from_user) or
+         Auth.is_bot?(from_user) do
       from_name = Account.get_username_by_id(from_id)
 
       messages
@@ -508,11 +519,12 @@ defmodule Teiserver.Protocols.SpringOut do
 
   defp do_reply(:chat_message_ex, {from_id, room_name, messages, state_user})
        when is_list(messages) do
-    from_user = Account.get_user_by_id(from_id)
+    from_user = Account.get_user(from_id)
 
     if not Account.does_a_ignore_b?(state_user.id, from_id) or
-         CacheUser.is_moderator?(from_user) == true or
-         CacheUser.is_bot?(from_user) == true do
+         Auth.admin?(from_user) or
+         Auth.moderator?(from_user) or
+         Auth.is_bot?(from_user) do
       from_name = Account.get_username_by_id(from_id)
 
       messages
@@ -611,11 +623,11 @@ defmodule Teiserver.Protocols.SpringOut do
     "s.system.disconnect #{reason}\n"
   end
 
-  defp do_reply(:server_restart, _) do
+  defp do_reply(:server_restart, _data) do
     "s.system.shutdown\n"
   end
 
-  defp do_reply(:error_log, _) do
+  defp do_reply(:error_log, _data) do
     "s.client.errorlog\n"
   end
 
@@ -754,7 +766,7 @@ defmodule Teiserver.Protocols.SpringOut do
     current_process = self()
 
     Task.Supervisor.start_child(Teiserver.TaskSupervisor, fn ->
-      teams_data = Teiserver.Battle.get_team_config(:all)
+      teams_data = Battle.get_team_config(:all)
 
       if teams_data do
         send(current_process, {:battle_teams, teams_data})
@@ -785,7 +797,8 @@ defmodule Teiserver.Protocols.SpringOut do
 
     Logger.metadata(request_id: "SpringTcpServer##{user.id}")
 
-    exempt_from_cmd_throttle = CacheUser.is_moderator?(user) or CacheUser.is_bot?(user) == true
+    exempt_from_cmd_throttle =
+      Auth.admin?(user) or Auth.moderator?(user) or Auth.is_bot?(user) == true
 
     %{
       state
@@ -827,7 +840,7 @@ defmodule Teiserver.Protocols.SpringOut do
                     Map.put(
                       state_acc.known_users,
                       member_id,
-                      Teiserver.SpringTcpServer._blank_user(member_id)
+                      SpringTcpServer._blank_user(member_id)
                     )
               }
 
@@ -869,8 +882,8 @@ defmodule Teiserver.Protocols.SpringOut do
   #   _send(msg, state.socket, state.transport, msg_id)
   # end
 
-  defp _send("", _, _), do: nil
-  defp _send(nil, _, _), do: nil
+  defp _send("", _msg_id, _state), do: nil
+  defp _send(nil, _msg_id, _state), do: nil
 
   defp _send(msg, msg_id, state) when is_list(msg) do
     _send(Enum.join(msg, ""), msg_id, state)

@@ -15,19 +15,21 @@ defmodule Teiserver.Account.RetentionRateExport do
     "start_date" => "2023-01-01"
   })
   """
+
+  alias Teiserver.Account
   alias Teiserver.Helper.DatePresets
-  alias Teiserver.{Account, Logging}
   alias Teiserver.Helper.TimexHelper
-  alias Teiserver.Helper.TimexHelper
+  alias Teiserver.Logging
+
   require Logger
 
   @activity_types ~w(total player)
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-campground"
+  def icon, do: "fa-solid fa-campground"
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Admin"
+  def permissions, do: "Admin"
 
   @spec show_form(Plug.Conn.t()) :: map()
   def show_form(_conn) do
@@ -77,7 +79,7 @@ defmodule Teiserver.Account.RetentionRateExport do
         search: [
           inserted_after: start_datetime,
           inserted_before: end_datetime,
-          verified: true,
+          has_role: "Verified",
           data_greater_than: {"last_login_mins", "0"},
           bot: "Person"
         ],
@@ -93,7 +95,7 @@ defmodule Teiserver.Account.RetentionRateExport do
         end
       )
       |> Enum.map(fn {key, userids} -> {key, userids} end)
-      |> Enum.sort_by(fn {key, _} -> TimexHelper.date_to_str(key, format: :ymd) end, &<=/2)
+      |> Enum.sort_by(fn {key, _userids} -> TimexHelper.date_to_str(key, format: :ymd) end, &<=/2)
 
     data = build_table(day_logs, accounts_by_insert_date)
 

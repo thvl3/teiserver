@@ -1,14 +1,23 @@
 defmodule TeiserverWeb.Microblog.PostFormComponent do
   @moduledoc false
-  use TeiserverWeb, :live_component
-  import Teiserver.Helper.ColourHelper, only: [rgba_css: 2]
 
-  alias Teiserver.{Communication, Microblog, Account}
+  alias Ecto.Multi
+  alias Teiserver.Account
   alias Teiserver.Account.AuthLib
+  alias Teiserver.Communication
+  alias Teiserver.Microblog
+  alias Teiserver.Microblog.PostTag
+  alias Teiserver.Repo
+
+  use TeiserverWeb, :live_component
+
+  require Logger
+
+  import Teiserver.Helper.ColourHelper, only: [rgba_css: 2]
 
   @default_channel_name "Dev updates"
 
-  @impl true
+  @impl Phoenix.LiveComponent
   def render(assigns) do
     show_upload_form = Map.get(assigns, :show_upload_form, false)
 
@@ -240,7 +249,7 @@ defmodule TeiserverWeb.Microblog.PostFormComponent do
     """
   end
 
-  @impl true
+  @impl Phoenix.LiveComponent
   def update(%{post: post} = assigns, socket) do
     tags =
       Microblog.list_tags(
@@ -306,7 +315,7 @@ defmodule TeiserverWeb.Microblog.PostFormComponent do
   defp error_to_string(:not_accepted), do: "You have selected an unacceptable file type"
   defp error_to_string(:too_many_files), do: "You have selected too many files"
 
-  @impl true
+  @impl Phoenix.LiveComponent
   def handle_event("cancel-upload", %{"ref" => ref}, socket) do
     {:noreply, cancel_upload(socket, :blog_file, ref)}
   end
@@ -391,13 +400,13 @@ defmodule TeiserverWeb.Microblog.PostFormComponent do
      |> assign(:selected_tags, new_selected_tags)}
   end
 
-  def handle_event("show-upload-form", _, socket) do
+  def handle_event("show-upload-form", _params, socket) do
     socket
     |> assign(:show_upload_form, true)
     |> noreply()
   end
 
-  def handle_event("hide-upload-form", _, socket) do
+  def handle_event("hide-upload-form", _params, socket) do
     socket
     |> assign(:show_upload_form, false)
     |> noreply()
@@ -426,9 +435,9 @@ defmodule TeiserverWeb.Microblog.PostFormComponent do
             }
           end)
 
-        Ecto.Multi.new()
-        |> Ecto.Multi.insert_all(:insert_all, Teiserver.Microblog.PostTag, added_tags)
-        |> Teiserver.Repo.transaction()
+        Multi.new()
+        |> Multi.insert_all(:insert_all, PostTag, added_tags)
+        |> Repo.transaction()
 
         notify_parent({:saved, post})
 
@@ -461,9 +470,9 @@ defmodule TeiserverWeb.Microblog.PostFormComponent do
             }
           end)
 
-        Ecto.Multi.new()
-        |> Ecto.Multi.insert_all(:insert_all, Teiserver.Microblog.PostTag, post_tags)
-        |> Teiserver.Repo.transaction()
+        Multi.new()
+        |> Multi.insert_all(:insert_all, PostTag, post_tags)
+        |> Repo.transaction()
 
         notify_parent({:saved, post})
 
@@ -494,7 +503,7 @@ defmodule TeiserverWeb.Microblog.PostFormComponent do
       {:ok, %{id: message_id}} ->
         Microblog.update_post(post, %{"discord_post_id" => message_id}, :discord_post_id)
 
-      _ ->
+      _other ->
         :ok
     end
   end
@@ -518,6 +527,10 @@ defmodule TeiserverWeb.Microblog.PostFormComponent do
 
       {:error, :discord_disabled} ->
         :ok
+
+      {:error, reason} ->
+        Logger.warning("Updating post #{post.discord_post_id} failed #{inspect(reason)}")
+        :error
     end
   end
 

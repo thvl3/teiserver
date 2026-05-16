@@ -1,17 +1,19 @@
 defmodule Teiserver.Telemetry.SimpleServerEventLib do
   @moduledoc false
-  use TeiserverWeb, :library_newform
-  alias Teiserver.Telemetry
-  alias Teiserver.Telemetry.{SimpleServerEvent, SimpleServerEventQueries}
+
   alias Phoenix.PubSub
+  alias Teiserver.Telemetry
+  alias Teiserver.Telemetry.SimpleServerEvent
+  alias Teiserver.Telemetry.SimpleServerEventQueries
+  use TeiserverWeb, :library_newform
 
   @broadcast_event_types ~w()
 
   @spec colour :: atom
-  def colour(), do: :info2
+  def colour, do: :info2
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-server"
+  def icon, do: "fa-server"
 
   @spec log_simple_server_event(integer, String.t()) ::
           {:error, Ecto.Changeset} | {:ok, SimpleServerEvent}
@@ -41,7 +43,7 @@ defmodule Teiserver.Telemetry.SimpleServerEventLib do
 
         result
 
-      _ ->
+      _error ->
         result
     end
   end

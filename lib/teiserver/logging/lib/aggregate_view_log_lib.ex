@@ -1,17 +1,18 @@
 defmodule Teiserver.Logging.AggregateViewLogLib do
   @moduledoc false
-  use TeiserverWeb, :library
 
   alias Teiserver.Logging.AggregateViewLog
   alias Teiserver.Logging.PageViewLog
 
+  use TeiserverWeb, :library
+
   @spec colours() :: atom
-  def colours(), do: :info2
+  def colours, do: :info2
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-chart-area"
+  def icon, do: "fa-solid fa-chart-area"
 
-  def get_logs() do
+  def get_logs do
     from(logs in AggregateViewLog)
   end
 
@@ -25,8 +26,8 @@ defmodule Teiserver.Logging.AggregateViewLogLib do
     end)
   end
 
-  def _search(query, _, ""), do: query
-  def _search(query, _, nil), do: query
+  def _search(query, _key, ""), do: query
+  def _search(query, _key, nil), do: query
 
   def _search(query, :date, date) do
     from logs in query,
@@ -61,7 +62,7 @@ defmodule Teiserver.Logging.AggregateViewLogLib do
       order_by: [asc: logs.date]
   end
 
-  def get_last_aggregate_date() do
+  def get_last_aggregate_date do
     query =
       from logs in AggregateViewLog,
         order_by: [desc: logs.date],
@@ -71,7 +72,7 @@ defmodule Teiserver.Logging.AggregateViewLogLib do
     Repo.one(query)
   end
 
-  def get_first_page_view_log_date() do
+  def get_first_page_view_log_date do
     query =
       from logs in PageViewLog,
         order_by: [asc: logs.inserted_at],

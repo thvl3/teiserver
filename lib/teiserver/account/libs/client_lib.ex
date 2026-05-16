@@ -1,6 +1,9 @@
 defmodule Teiserver.Account.ClientLib do
+  @moduledoc false
   alias Phoenix.PubSub
-  alias Teiserver.{Account, Battle}
+  alias Teiserver.Account
+  alias Teiserver.Account.Auth
+  alias Teiserver.Battle
   alias Teiserver.Data.Types, as: T
 
   @spec colours() :: atom
@@ -37,12 +40,12 @@ defmodule Teiserver.Account.ClientLib do
   end
 
   @spec list_client_ids() :: [T.userid()]
-  def list_client_ids() do
+  def list_client_ids do
     Horde.Registry.select(Teiserver.ClientRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
   end
 
   @spec list_clients() :: [T.client()]
-  def list_clients() do
+  def list_clients do
     list_client_ids()
     |> list_clients()
   end
@@ -92,8 +95,6 @@ defmodule Teiserver.Account.ClientLib do
     # Update the process with it
     cast_client(userid, {:update_client, client})
 
-    # PubSub.broadcast(Teiserver.PubSub, "legacy_all_client_updates", {:updated_client, client, reason})
-
     if client.lobby_id do
       PubSub.broadcast(
         Teiserver.PubSub,
@@ -123,7 +124,7 @@ defmodule Teiserver.Account.ClientLib do
                 new_lobby = %{lobby | in_progress: true, started_at: System.system_time(:second)}
                 Battle.update_lobby(new_lobby, nil, :host_updated_clientstatus)
 
-              _ ->
+              _other ->
                 :ok
             end
         end
@@ -172,7 +173,7 @@ defmodule Teiserver.Account.ClientLib do
                 new_lobby = %{lobby | in_progress: true, started_at: System.system_time(:second)}
                 Battle.update_lobby(new_lobby, nil, :host_updated_clientstatus)
 
-              _ ->
+              _other ->
                 :ok
             end
         end
@@ -200,30 +201,32 @@ defmodule Teiserver.Account.ClientLib do
   @spec client_exists?(T.userid()) :: pid() | boolean
   def client_exists?(userid) do
     case Horde.Registry.lookup(Teiserver.ClientRegistry, userid) do
-      [{_pid, _}] -> true
-      _ -> false
+      [{_pid, _value}] -> true
+      _other -> false
     end
   end
 
   @spec get_client_pid(T.userid()) :: pid() | nil
   def get_client_pid(userid) do
     case Horde.Registry.lookup(Teiserver.ClientRegistry, userid) do
-      [{pid, _}] -> pid
-      _ -> nil
+      [{pid, _value}] -> pid
+      _other -> nil
     end
   end
 
   @spec count_client() :: non_neg_integer()
-  def count_client() do
+  def count_client do
     case Horde.Registry.count(Teiserver.ClientRegistry) do
       :undefined -> 0
       n -> n
     end
   end
 
-  # this isn't terribly efficient, but I'm not sure how else one can get the number of connected *players*
-  # also, horde doesn't have `count_select` so we have to materialise the list and send it across process
-  def count_non_bot_clients() do
+  # this isn't terribly efficient, but I'm not sure how
+  # else one can get the number of connected *players*
+  # also, horde doesn't have `count_select` so we have to
+  # materialise the list and send it across process
+  def count_non_bot_clients do
     guards =
       ["SPADS v", "SpringLobbyMonitor", "Teiserver Internal Client", "SLTS Client d"]
       |> Enum.map(fn client_name -> {:"=/=", :"$3", client_name} end)
@@ -256,7 +259,7 @@ defmodule Teiserver.Account.ClientLib do
 
           # If the process has somehow died, we just return nil
         catch
-          :exit, _ ->
+          :exit, _reason ->
             nil
         end
     end
@@ -288,8 +291,8 @@ defmodule Teiserver.Account.ClientLib do
       | userid: user.id,
         name: user.name,
         rank: user.rank,
-        moderator: Teiserver.CacheUser.is_moderator?(user),
-        bot: Teiserver.CacheUser.is_bot?(user),
+        moderator: Auth.moderator?(user.id),
+        bot: Auth.is_bot?(user.id),
         ip: stats["last_ip"],
         country: stats["country"],
         lobby_client: stats["lobby_client"]

@@ -1,8 +1,12 @@
 defmodule Teiserver.Logging.Tasks.PersistServerDayTaskTest do
   @moduledoc false
-  use Teiserver.DataCase
-  alias Teiserver.{Logging, Account, CacheUser}
+
+  alias Teiserver.Account
+  alias Teiserver.AccountFixtures
+  alias Teiserver.CacheUser
+  alias Teiserver.Logging
   alias Teiserver.Logging.Tasks.PersistServerDayTask
+  use Teiserver.DataCase
 
   test "perform task" do
     # Make some data
@@ -12,13 +16,16 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTaskTest do
     assert :ok == PersistServerDayTask.perform(%{})
 
     # Now ensure it ran
-    log = Logging.get_server_day_log(Timex.to_date({2021, 1, 1}))
+    log = {2021, 1, 1} |> Timex.to_date() |> Logging.get_server_day_log()
 
     assert log.date == Timex.to_date({2021, 1, 1})
     assert is_integer(log.data["aggregates"]["minutes"]["lobby"])
   end
 
-  defp create_minute_data() do
+  defp create_minute_data do
+    AccountFixtures.user_fixture()
+    AccountFixtures.user_fixture()
+
     all_ids =
       Account.list_users()
       |> Enum.map(fn u -> u.id end)

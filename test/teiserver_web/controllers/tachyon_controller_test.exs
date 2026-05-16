@@ -1,20 +1,21 @@
 defmodule TeiserverWeb.TachyonControllerTest do
-  use TeiserverWeb.ConnCase
-  alias Central.Helpers.GeneralTestLib
+  alias ExUnit.Callbacks
+  alias Phoenix.ConnTest
+  alias Teiserver.Client
+  alias Teiserver.Helpers.GeneralTestLib
   alias Teiserver.OAuthFixtures
-  alias Teiserver.Support.{Tachyon, Polling}
-
+  alias Teiserver.Player
+  alias Teiserver.Support.Polling
+  alias Teiserver.Support.Tachyon
+  alias Teiserver.TeiserverTestLib
   alias WebsocketSyncClient, as: WSC
 
-  defp setup_conn(_context) do
-    conn = Phoenix.ConnTest.build_conn()
+  use TeiserverWeb.ConnCase
 
-    user =
-      GeneralTestLib.make_user(%{
-        "data" => %{
-          "roles" => ["Verified"]
-        }
-      })
+  defp setup_conn(_context) do
+    conn = ConnTest.build_conn()
+
+    user = GeneralTestLib.make_user(%{"roles" => ["Verified"]})
 
     {:ok, conn: conn, user: user}
   end
@@ -81,10 +82,8 @@ defmodule TeiserverWeb.TachyonControllerTest do
     test "cannot connect if user is banned", %{conn: conn} do
       user =
         GeneralTestLib.make_user(%{
-          "data" => %{
-            "roles" => ["Verified"],
-            "restrictions" => ["Permanently banned"]
-          }
+          "roles" => ["Verified"],
+          "restrictions" => ["Permanently banned"]
         })
 
       conn =
@@ -109,10 +108,8 @@ defmodule TeiserverWeb.TachyonControllerTest do
     test "cannot connect if user is suspended", %{conn: conn} do
       user =
         GeneralTestLib.make_user(%{
-          "data" => %{
-            "roles" => ["Verified"],
-            "restrictions" => ["Login"]
-          }
+          "roles" => ["Verified"],
+          "restrictions" => ["Login"]
         })
 
       conn =
@@ -147,20 +144,20 @@ defmodule TeiserverWeb.TachyonControllerTest do
       ]
 
       {:ok, client} = WSC.connect(tachyon_url(), opts)
-      ExUnit.Callbacks.on_exit(fn -> Tachyon.cleanup_connection(client, token) end)
+      Callbacks.on_exit(fn -> Tachyon.cleanup_connection(client, token) end)
 
       conn_pid =
-        Teiserver.Support.Polling.poll_until_some(fn ->
-          Teiserver.Player.lookup_connection(user.id)
+        Polling.poll_until_some(fn ->
+          Player.lookup_connection(user.id)
         end)
 
       assert is_pid(conn_pid)
 
       # make sure we can still connect with chobby
-      {:ok, server_context} = Teiserver.TeiserverTestLib.start_spring_server()
-      %{socket: sock} = Teiserver.TeiserverTestLib.auth_setup(server_context, user)
+      {:ok, server_context} = TeiserverTestLib.start_spring_server()
+      %{socket: sock} = TeiserverTestLib.auth_setup(server_context, user)
       assert is_port(sock)
-      Teiserver.Client.disconnect(user.id)
+      Client.disconnect(user.id)
       WSC.disconnect(client)
     end
 
@@ -178,11 +175,11 @@ defmodule TeiserverWeb.TachyonControllerTest do
       ]
 
       {:ok, client} = WSC.connect(tachyon_url(), opts)
-      ExUnit.Callbacks.on_exit(fn -> Tachyon.cleanup_connection(client, token) end)
+      Callbacks.on_exit(fn -> Tachyon.cleanup_connection(client, token) end)
 
       conn_pid =
         Polling.poll_until_some(fn ->
-          Teiserver.Player.lookup_connection(user.id)
+          Player.lookup_connection(user.id)
         end)
 
       assert is_pid(conn_pid)
@@ -201,7 +198,7 @@ defmodule TeiserverWeb.TachyonControllerTest do
     |> put_req_header("sec-websocket-protocol", "v0.tachyon")
   end
 
-  defp tachyon_url() do
+  defp tachyon_url do
     conf = Application.get_env(:teiserver, TeiserverWeb.Endpoint)
     "ws://#{conf[:url][:host]}:#{conf[:http][:port]}" <> ~p"/tachyon"
   end

@@ -3,20 +3,27 @@ defmodule Teiserver.Battle do
   The Battle context.
   """
 
-  import Ecto.Query, warn: false
-  alias Teiserver.Helper.QueryHelpers
-  alias Teiserver.Repo
-  alias Teiserver.{Account, Telemetry, Coordinator}
-  alias Teiserver.Lobby
-  alias Teiserver.Battle.{MatchMembership, MatchMembershipLib}
+  alias ExULID.ULID
   alias Phoenix.PubSub
-
+  alias Teiserver.Account
   alias Teiserver.Battle.Match
   alias Teiserver.Battle.MatchLib
+  alias Teiserver.Battle.MatchMembership
+  alias Teiserver.Battle.MatchMembershipLib
+  alias Teiserver.Battle.MatchMonitorServer
+  alias Teiserver.Coordinator
   alias Teiserver.Data.Types, as: T
-
+  alias Teiserver.Helper.QueryHelpers
+  alias Teiserver.Lobby
+  alias Teiserver.Lobby.ChatLib
+  alias Teiserver.Lobby.LobbyLib
   alias Teiserver.Protocols.Spring
+  alias Teiserver.Repo
+  alias Teiserver.Telemetry
+
   require Logger
+
+  import Ecto.Query, warn: false
 
   @spec match_query(keyword()) :: Ecto.Query.t()
   def match_query(args) do
@@ -303,29 +310,6 @@ defmodule Teiserver.Battle do
     Match.changeset(match, %{})
   end
 
-  # Not to be confused with protocol related adding, this
-  # tells the battle lobby to proceed as if the user was just accepted into
-  # the battle. It should never be called directly from a protocol
-  # related command, only via things like matchmaking our tourneys
-  # It is currently not actually used so might be ripe for removal
-  # @spec add_player_to_battle(T.userid(), T.lobby_id()) :: :ok | {:error, String.t()}
-  # def add_player_to_battle(userid, lobby_id) do
-  #   case Teiserver.Client.get_client_by_id(userid) do
-  #     nil ->
-  #       {:error, "no client"}
-  #     _ ->
-  #       case lobby_exists?(lobby_id) do
-  #         false ->
-  #           {:error, "no battle"}
-  #         true ->
-  #           Teiserver.Lobby.accept_join_request(userid, lobby_id)
-  #       end
-  #   end
-  # end
-
-  alias Teiserver.Battle.{MatchMonitorServer, MatchLib}
-  alias Teiserver.Lobby.{ChatLib, LobbyLib}
-
   @spec start_match(nil | T.lobby_id()) :: :ok
   def start_match(nil), do: :ok
 
@@ -394,7 +378,6 @@ defmodule Teiserver.Battle do
         end
 
       {:error, :unavailable} ->
-        Logger.warning("Cannot start match for lobby #{lobby_id}: lobby unavailable")
         :ok
     end
 
@@ -468,8 +451,8 @@ defmodule Teiserver.Battle do
     already_finished? = match.finished != nil
     winning_ally_team = List.first(winning_ally_teams)
 
-    # credo:disable-for-next-line Credo.Check.Design.TagTODO
-    # TODO Currently trusting the first received event, should be reworked to accept what the majority agrees on
+    # TODO Currently trusting the first received event,
+    # should be reworked to accept what the majority agrees on
     if winning_ally_team != nil && match.winning_team != nil &&
          winning_ally_team != match.winning_team do
       Logger.warning("Match #{match_id} winning team conflict!")
@@ -526,7 +509,7 @@ defmodule Teiserver.Battle do
         [match] ->
           do_stop_match(match, lobby_id)
 
-        _ ->
+        _other ->
           :ok
       end
     end
@@ -571,7 +554,7 @@ defmodule Teiserver.Battle do
       [m] ->
         m
 
-      _ ->
+      _other ->
         nil
     end
   end
@@ -579,7 +562,7 @@ defmodule Teiserver.Battle do
   @spec generate_lobby_uuid :: String.t()
   @spec generate_lobby_uuid([T.lobby_id()]) :: String.t()
   def generate_lobby_uuid(skip_ids \\ []) do
-    uuid = ExULID.ULID.generate()
+    uuid = ULID.generate()
 
     # Check if this uuid is present in the current set of lobbies
     existing_uuid =
@@ -600,7 +583,7 @@ defmodule Teiserver.Battle do
           [] ->
             uuid
 
-          _ ->
+          _existing ->
             generate_lobby_uuid()
         end
     end
@@ -620,7 +603,6 @@ defmodule Teiserver.Battle do
             # because the bot itself is in a new lobby since the last one finished
             script_tags = data["battleContext"]["scriptTags"]
 
-            # credo:disable-for-next-line Credo.Check.Design.TagTODO
             # TODO the server/match/id is legacy and should be removed
             # After updating Teiserver, there may be some ongoing matches with the legacy tags
             id = script_tags["game/server_match_id"] || script_tags["server/match/id"]
@@ -640,7 +622,7 @@ defmodule Teiserver.Battle do
                 update_match(match, %{data: new_data})
             end
 
-          _ ->
+          _error ->
             Logger.error("Error with json decode of save_match_stats")
             {:error, "JSON decode"}
         end
@@ -648,13 +630,11 @@ defmodule Teiserver.Battle do
   end
 
   @spec start_match_monitor() :: :ok | {:failure, String.t()}
-  def start_match_monitor() do
-    cond do
-      MatchMonitorServer.get_match_monitor_userid() != nil ->
-        {:failure, "Already started"}
-
-      true ->
-        MatchMonitorServer.do_start()
+  def start_match_monitor do
+    if is_nil(MatchMonitorServer.get_match_monitor_userid()) do
+      MatchMonitorServer.do_start()
+    else
+      {:failure, "Already started"}
     end
   end
 

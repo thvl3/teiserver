@@ -1,10 +1,15 @@
 defmodule Teiserver.OAuth.TokenTest do
-  use Teiserver.DataCase, async: true
-  alias Teiserver.OAuthFixtures
+  alias Ecto.Changeset
   alias Teiserver.OAuth
+  alias Teiserver.OAuth.Token
+  alias Teiserver.OAuthFixtures
+  alias Teiserver.Repo
+  alias Teiserver.TeiserverTestLib
+  alias Timex.Duration
+  use Teiserver.DataCase, async: true
 
   setup do
-    user = Teiserver.TeiserverTestLib.new_user()
+    user = TeiserverTestLib.new_user()
 
     {:ok, app} =
       OAuth.create_application(%{
@@ -18,18 +23,18 @@ defmodule Teiserver.OAuth.TokenTest do
   end
 
   test "token must have an owner", %{app: app} do
-    assert {:error, _} =
-             Teiserver.OAuth.Token.changeset(%Teiserver.OAuth.Token{}, %{
+    assert {:error, _changeset} =
+             Token.changeset(%Token{}, %{
                value: "coucou",
                application_id: app.id,
                scopes: ["tachyon.lobby"],
                expires_at: DateTime.utc_now(),
                type: :access
              })
-             |> Ecto.Changeset.check_constraint(:oauth_tokens,
+             |> Changeset.check_constraint(:oauth_tokens,
                name: :token_must_have_exactly_one_owner
              )
-             |> Teiserver.Repo.insert()
+             |> Repo.insert()
   end
 
   test "can create a token directly", %{user: user, app: app} do
@@ -66,7 +71,7 @@ defmodule Teiserver.OAuth.TokenTest do
 
   test "can refresh a token", %{user: user, app: app} do
     assert {:ok, token} = OAuth.create_token(user, app, scopes: app.scopes)
-    assert {:ok, _} = OAuth.get_valid_token(token.refresh_token.value)
+    assert {:ok, _token} = OAuth.get_valid_token(token.refresh_token.value)
     assert {:ok, new_token} = OAuth.refresh_token(token.refresh_token)
 
     # the previous token and its refresh token should have been invalidated
@@ -80,7 +85,7 @@ defmodule Teiserver.OAuth.TokenTest do
 
   test "can change scopes at refresh", %{user: user, app: app} do
     assert {:ok, token} = OAuth.create_token(user, app, scopes: app.scopes)
-    assert {:ok, _} = OAuth.get_valid_token(token.refresh_token.value)
+    assert {:ok, _token} = OAuth.get_valid_token(token.refresh_token.value)
     assert {:ok, new_token} = OAuth.refresh_token(token.refresh_token, scopes: ["tachyon.lobby"])
     assert MapSet.new(new_token.scopes) == MapSet.new(["tachyon.lobby"])
     assert MapSet.new(token.scopes) == MapSet.new(new_token.original_scopes)
@@ -88,7 +93,7 @@ defmodule Teiserver.OAuth.TokenTest do
 
   test "cannot get more scopes than originally", %{user: user, app: app} do
     assert {:ok, token} = OAuth.create_token(user, app, scopes: app.scopes)
-    assert {:ok, _} = OAuth.get_valid_token(token.refresh_token.value)
+    assert {:ok, _token} = OAuth.get_valid_token(token.refresh_token.value)
 
     {:error, changeset} =
       OAuth.refresh_token(token.refresh_token, scopes: ["tachyon.lobby", "lolscope"])
@@ -111,7 +116,7 @@ defmodule Teiserver.OAuth.TokenTest do
 
   defp create_token(user, app, opts) do
     expires_at =
-      Keyword.get(opts, :expires_at, Timex.add(DateTime.utc_now(), Timex.Duration.from_days(1)))
+      Keyword.get(opts, :expires_at, Timex.add(DateTime.utc_now(), Duration.from_days(1)))
 
     attrs =
       Enum.into(opts, %{})

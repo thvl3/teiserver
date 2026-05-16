@@ -1,9 +1,10 @@
 defmodule TeiserverWeb.Account.ProfileLive.Username do
   @moduledoc false
-  use TeiserverWeb, :live_view
-  alias Teiserver.Account
 
-  @impl true
+  alias Teiserver.Account
+  use TeiserverWeb, :live_view
+
+  @impl Phoenix.LiveView
   def mount(%{"username" => username}, _session, socket) do
     userid = Account.get_userid_from_name(username)
 
@@ -19,7 +20,7 @@ defmodule TeiserverWeb.Account.ProfileLive.Username do
     end
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_event(_string, _event, socket) do
     {:noreply, socket}
   end

@@ -1,43 +1,55 @@
 defmodule Teiserver.Room do
   @moduledoc false
-  require Logger
-  alias Teiserver.{Account, CacheUser, Chat, Coordinator, Moderation}
-  alias Teiserver.Chat.WordLib
+
   alias Phoenix.PubSub
+  alias Teiserver.Account
+  alias Teiserver.Account.Auth
+  alias Teiserver.Account.User
+  alias Teiserver.CacheUser
+  alias Teiserver.Chat
+  alias Teiserver.Chat.RoomRegistry
+  alias Teiserver.Chat.RoomServer
+  alias Teiserver.Chat.RoomSupervisor
+  alias Teiserver.Chat.WordLib
+  alias Teiserver.Coordinator
   alias Teiserver.Data.Types, as: T
+  alias Teiserver.Moderation
+  alias Teiserver.Plugins
+
+  use Plugins
+
+  require Logger
 
   @type room :: Chat.RoomServer.room()
 
   @spec create_room(map()) :: map()
-  def create_room(%{name: _} = room) do
+  def create_room(%{name: _name} = room) do
     Map.merge(
       %{
         members: [],
-        password: "",
-        clan_id: nil
+        password: ""
       },
       room
     )
   end
 
-  @spec create_room(String.t(), T.userid(), T.clan_id() | nil) :: map()
-  def create_room(room_name, author_id, clan_id \\ nil) do
+  @spec create_room(String.t(), T.userid()) :: map()
+  def create_room(room_name, author_id) do
     %{
       name: room_name,
       members: [],
       author_id: author_id,
       topic: "topic",
-      password: "",
-      clan_id: clan_id
+      password: ""
     }
   end
 
   def remove_room(room_name) do
-    Chat.RoomServer.stop_room(room_name)
+    RoomServer.stop_room(room_name)
   end
 
   @spec get_room(String.t()) :: room() | nil
-  defdelegate get_room(name), to: Chat.RoomServer
+  defdelegate get_room(name), to: RoomServer
 
   @spec can_join_room?(T.userid(), String.t()) :: true | {false, String.t()}
   def can_join_room?(userid, room_name) do
@@ -47,13 +59,13 @@ defmodule Teiserver.Room do
       user == nil ->
         {false, "No user"}
 
-      CacheUser.is_moderator?(user) == true ->
+      Auth.admin?(userid) or Auth.moderator?(userid) == true ->
         true
 
       true ->
-        case Chat.RoomServer.can_join_room?(room_name, user) do
+        case RoomServer.can_join_room?(room_name, user) do
           :invalid_room ->
-            get_or_make_room(room_name, userid, user.clan_id)
+            get_or_make_room(room_name, userid)
             true
 
           x ->
@@ -62,14 +74,14 @@ defmodule Teiserver.Room do
     end
   end
 
-  @spec get_or_make_room(String.t(), T.userid(), T.clan_id() | nil) :: Chat.RoomServer.room()
-  def get_or_make_room(name, author_id, clan_id \\ nil) do
-    case Chat.RoomServer.get_room(name) do
+  @spec get_or_make_room(String.t(), T.userid()) :: RoomServer.room()
+  def get_or_make_room(name, author_id) do
+    case RoomServer.get_room(name) do
       nil ->
-        case Chat.RoomSupervisor.start_room(name, author_id, "", "", clan_id) do
-          {:ok, _pid} -> get_or_make_room(name, author_id, clan_id)
-          {:ok, _pid, _info} -> get_or_make_room(name, author_id, clan_id)
-          {:error, {:already_started, _pid}} -> get_or_make_room(name, author_id, clan_id)
+        case RoomSupervisor.start_room(name, author_id, "", "") do
+          {:ok, _pid} -> get_or_make_room(name, author_id)
+          {:ok, _pid, _info} -> get_or_make_room(name, author_id)
+          {:error, {:already_started, _pid}} -> get_or_make_room(name, author_id)
         end
 
       room ->
@@ -78,7 +90,7 @@ defmodule Teiserver.Room do
   end
 
   def add_user_to_room(userid, room_name, pid \\ self()) do
-    case Chat.RoomServer.join_room(room_name, userid, pid) do
+    case RoomServer.join_room(room_name, userid, pid) do
       {:ok, :already_present} ->
         :ok
 
@@ -98,72 +110,77 @@ defmodule Teiserver.Room do
   end
 
   def remove_user_from_room(userid, room_name) do
-    Chat.RoomServer.leave_room(room_name, userid)
-  end
-
-  @spec clan_room_name(String.t()) :: String.t()
-  def clan_room_name(clan_name) do
-    safe_name =
-      clan_name
-      |> String.replace(" ", "")
-      |> String.replace("-", "")
-
-    "clan_#{safe_name}"
+    RoomServer.leave_room(room_name, userid)
   end
 
   @spec list_rooms() :: [{String.t(), member_count :: non_neg_integer()}]
-  defdelegate list_rooms(), to: Chat.RoomRegistry
+  defdelegate list_rooms(), to: RoomRegistry
 
-  @spec send_message(T.userid() | T.user(), String.t(), String.t() | [String.t()]) :: nil | :ok
+  @spec send_message(T.userid() | User.t(), String.t(), String.t() | [String.t()]) :: nil | :ok
   def send_message(from_id, _room_name, "$" <> msg) do
     CacheUser.send_direct_message(from_id, Coordinator.get_coordinator_userid(), "$" <> msg)
   end
 
   def send_message(from_id, room_name, messages) when is_list(messages) do
-    user = Account.get_user_by_id(from_id)
+    user = Account.get_user(from_id)
     if user != nil, do: Enum.map(messages, fn msg -> send_message(user, room_name, msg) end)
   end
 
   def send_message(from_id, room_name, msg) when is_integer(from_id) do
-    user = Account.get_user_by_id(from_id)
+    user = Account.get_user(from_id)
     if user != nil, do: send_message(user, room_name, msg)
   end
 
-  def send_message(user, room_name, msg) do
-    if CacheUser.is_bot?(user) == false and WordLib.flagged_words(msg) > 0 do
+  def send_message(%User{} = user, room_name, msg) do
+    bot? = Auth.is_bot?(user)
+
+    if not bot? and WordLib.flagged_words(msg) > 0 do
       Moderation.unbridge_user(user, msg, WordLib.flagged_words(msg), "public_chat:#{room_name}")
     end
 
-    blacklisted = CacheUser.is_bot?(user) == false and WordLib.blacklisted_phrase?(msg)
+    cond do
+      allow?(user.id) == false ->
+        nil
 
-    if blacklisted do
-      CacheUser.shadowban_user(user.id)
-    end
+      not bot? and WordLib.blacklisted_phrase?(msg) ->
+        CacheUser.shadowban_user(user.id)
+        nil
 
-    if allow?(user.id) do
-      Chat.RoomServer.send_message(room_name, user.id, msg)
+      true ->
+        do_send_message(room_name, user, msg)
     end
+  end
+
+  @decorate Plugins.plugin(:send_chat_message)
+  defp do_send_message(room_name, %{id: user_id}, msg) do
+    RoomServer.send_message(room_name, user_id, msg)
   end
 
   @spec send_message_ex(T.userid(), String.t(), String.t()) :: nil | :ok
   def send_message_ex(from_id, room_name, msg) do
-    user = Account.get_user_by_id(from_id)
+    user = Account.get_user(from_id)
+    bot? = Auth.is_bot?(user)
 
-    if CacheUser.is_bot?(user) == false and WordLib.flagged_words(msg) > 0 do
+    if not bot? and WordLib.flagged_words(msg) > 0 do
       Moderation.unbridge_user(user, msg, WordLib.flagged_words(msg), "public_chat:#{room_name}")
     end
 
-    blacklisted = CacheUser.is_bot?(user) == false and WordLib.blacklisted_phrase?(msg)
+    cond do
+      allow?(user.id) == false ->
+        nil
 
-    if blacklisted do
-      CacheUser.shadowban_user(user.id)
+      not bot? and WordLib.blacklisted_phrase?(msg) ->
+        CacheUser.shadowban_user(user.id)
+        nil
+
+      true ->
+        do_send_message_ex(room_name, user, msg)
     end
+  end
 
-    if allow?(from_id) do
-      Chat.RoomServer.send_message_ex(room_name, from_id, msg)
-    end
-
-    :ok
+  @decorate Plugins.plugin(:send_chat_message_ex)
+  defp do_send_message_ex(room_name, %{id: user_id}, msg) do
+    RoomServer.send_message_ex(room_name, user_id, msg)
   end
 
   @spec allow?(T.userid()) :: boolean()
@@ -172,7 +189,7 @@ defmodule Teiserver.Room do
       CacheUser.is_shadowbanned?(userid) ->
         false
 
-      CacheUser.is_restricted?(userid, ["All chat", "Room chat"]) ->
+      Account.restricted?(userid, ["All chat", "Room chat"]) ->
         false
 
       true ->

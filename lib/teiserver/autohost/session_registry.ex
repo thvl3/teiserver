@@ -11,7 +11,7 @@ defmodule Teiserver.Autohost.SessionRegistry do
           current_battles: non_neg_integer()
         }
 
-  def start_link() do
+  def start_link do
     Registry.start_link(keys: :unique, name: __MODULE__)
   end
 
@@ -33,7 +33,7 @@ defmodule Teiserver.Autohost.SessionRegistry do
   def lookup(autohost_id) do
     case Registry.lookup(__MODULE__, autohost_id) do
       [x] -> x
-      _ -> nil
+      _other -> nil
     end
   end
 
@@ -49,7 +49,7 @@ defmodule Teiserver.Autohost.SessionRegistry do
       current_battles: current_battles
     }
 
-    result = Registry.update_value(__MODULE__, autohost_id, fn _ -> value end)
+    result = Registry.update_value(__MODULE__, autohost_id, fn _old -> value end)
 
     if result == :error do
       Registry.register(__MODULE__, autohost_id, value)
@@ -61,19 +61,19 @@ defmodule Teiserver.Autohost.SessionRegistry do
   @spec get_value(Bot.id()) :: reg_value() | nil
   def get_value(autohost_id) do
     case Registry.lookup(__MODULE__, autohost_id) do
-      [{_, val}] -> val
-      _ -> nil
+      [{_pid, val}] -> val
+      _other -> nil
     end
   end
 
-  def child_spec(_) do
+  def child_spec(_opts) do
     Supervisor.child_spec(Registry,
       id: __MODULE__,
       start: {__MODULE__, :start_link, []}
     )
   end
 
-  def count() do
+  def count do
     Registry.count(__MODULE__)
   end
 
@@ -81,7 +81,7 @@ defmodule Teiserver.Autohost.SessionRegistry do
   Returns all the currently registered autohosts sessions
   """
   @spec list() :: [reg_value()]
-  def list() do
+  def list do
     Registry.select(__MODULE__, [{{:_, :_, :"$1"}, [], [:"$1"]}])
   end
 end

@@ -8,14 +8,18 @@
 
 defmodule Teiserver.Client do
   @moduledoc false
-  alias Phoenix.PubSub
-  alias Teiserver.{CacheUser, Account, Telemetry, Clans, Coordinator}
-  alias Teiserver.Lobby
-  alias Teiserver.Account.ClientLib
-  # alias Teiserver.Helper.TimexHelper
-  require Logger
 
+  # alias Teiserver.Helper.TimexHelper
+  alias Phoenix.PubSub
+  alias Teiserver.Account
+  alias Teiserver.Account.Auth
+  alias Teiserver.Account.ClientLib
+  alias Teiserver.CacheUser
+  alias Teiserver.Coordinator
   alias Teiserver.Data.Types, as: T
+  alias Teiserver.Lobby
+  alias Teiserver.Telemetry
+  require Logger
 
   @spec create(map()) :: map()
   def create(client) do
@@ -62,7 +66,6 @@ defmodule Teiserver.Client do
         lobby_host: false,
         queues: [],
         party_id: nil,
-        clan_tag: nil,
         token_id: nil,
         protocol: nil
       },
@@ -91,12 +94,7 @@ defmodule Teiserver.Client do
   @spec login(T.user(), atom(), String.t() | nil) :: T.client()
   def login(user, protocol, ip \\ nil, token_id \\ nil) do
     stats = Account.get_user_stat_data(user.id)
-
-    clan_tag =
-      case Clans.get_clan(user.clan_id) do
-        nil -> nil
-        clan -> clan.tag
-      end
+    db_user = Account.get_user(user.id)
 
     client =
       create(%{
@@ -105,19 +103,18 @@ defmodule Teiserver.Client do
         name: user.name,
         tcp_pid: self(),
         rank: user.rank,
-        moderator: CacheUser.is_moderator?(user) or CacheUser.is_event_organizer?(user),
-        bot: CacheUser.is_bot?(user),
+        moderator: Auth.moderator?(db_user) or Auth.is_event_organizer?(db_user),
+        bot: Auth.is_bot?(db_user),
         away: false,
         in_game: false,
         ip: ip || stats["last_ip"],
         country: stats["country"] || "??",
         lobby_client: stats["lobby_client"],
         shadowbanned: CacheUser.is_shadowbanned?(user),
-        muted: CacheUser.has_mute?(user),
+        muted: Account.has_mute?(db_user),
         awaiting_warn_ack: false,
         warned: false,
         token_id: token_id,
-        clan_tag: clan_tag,
         protocol: protocol
       })
 
@@ -256,13 +253,14 @@ defmodule Teiserver.Client do
     end
   end
 
-  # If it's a test user, don't worry about actually disconnecting it
+  # If it's a test user, don't worry about actually disconnecting it or
+  # logging it properly, we test simple server events and updating cache users
+  # elsewhere
   defp do_disconnect(client, reason, kick) do
     if kick do
       Coordinator.send_to_host(client.lobby_id, "!gkick #{client.name}")
     end
 
-    Telemetry.log_simple_server_event(client.userid, "disconnect:#{reason}")
     Lobby.remove_user_from_any_lobby(client.userid)
 
     # If they are part of a party, lets leave it
@@ -272,6 +270,7 @@ defmodule Teiserver.Client do
     # identify what actually went wrong
     if not Application.get_env(:teiserver, Teiserver)[:test_mode] do
       Account.update_cache_user(client.userid, %{last_logout: Timex.now()})
+      Telemetry.log_simple_server_event(client.userid, "disconnect:#{reason}")
     end
 
     if client.bot do

@@ -1,8 +1,10 @@
 defmodule TeiserverWeb.Account.GeneralController do
   @moduledoc false
-  use TeiserverWeb, :controller
 
   alias Teiserver.Account
+  alias Teiserver.Config
+
+  use TeiserverWeb, :controller
 
   plug(:add_breadcrumb, name: "Account", url: "/teiserver/account")
 
@@ -37,7 +39,7 @@ defmodule TeiserverWeb.Account.GeneralController do
     user_params = Map.put(user_params, "password", user_params["password_confirmation"])
 
     user_params =
-      if Teiserver.Config.get_site_config_cache("user.Enable renames") do
+      if Config.get_site_config_cache("user.Enable renames") do
         user_params
       else
         Map.drop(user_params, ["name"])

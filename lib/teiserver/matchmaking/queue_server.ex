@@ -8,16 +8,20 @@ defmodule Teiserver.Matchmaking.QueueServer do
   It also has some associated state for telemetry.
   """
 
-  use GenServer
-  require Logger
   alias Teiserver.Battle.MatchLib
-  alias Teiserver.Matchmaking.{QueueRegistry, PairingRoom}
   alias Teiserver.Data.Types, as: T
+  alias Teiserver.Helpers.MonitorCollection, as: MC
+  alias Teiserver.Matchmaking
+  alias Teiserver.Matchmaking.Algo
+  alias Teiserver.Matchmaking.Member
+  alias Teiserver.Matchmaking.PairingRoom
+  alias Teiserver.Matchmaking.QueueRegistry
   alias Teiserver.Party
   alias Teiserver.Player
-  alias Teiserver.Helpers.MonitorCollection, as: MC
-  alias Teiserver.Matchmaking.Member
-  alias Teiserver.Matchmaking.Algo
+
+  use GenServer
+
+  require Logger
 
   @type id :: String.t()
 
@@ -100,7 +104,7 @@ defmodule Teiserver.Matchmaking.QueueServer do
           :intentional | {:server_error, term()} | :party_user_left | :ready_timeout
 
   @spec default_settings() :: settings()
-  def default_settings() do
+  def default_settings do
     %{tick_interval_ms: 5_000, max_distance: 15, pairing_timeout: 20_000}
   end
 
@@ -126,7 +130,6 @@ defmodule Teiserver.Matchmaking.QueueServer do
         :bruteforce_filter -> Algo.BruteforceFilter
       end
 
-    # credo:disable-for-next-line Credo.Check.Refactor.Apply
     alg_state = apply(alg_module, :init, [attrs.team_size, attrs.team_count])
 
     %{
@@ -184,14 +187,16 @@ defmodule Teiserver.Matchmaking.QueueServer do
     sess_pid = self()
 
     if party_id == nil do
-      game_type = GenServer.call(via_tuple(queue_id), :get_game_type)
+      game_type = queue_id |> via_tuple() |> GenServer.call(:get_game_type)
       member = Member.new([user_id], game_type)
-      GenServer.call(via_tuple(queue_id), {:join_queue, version, {member, sess_pid}})
+      queue_id |> via_tuple() |> GenServer.call({:join_queue, version, {member, sess_pid}})
     else
-      GenServer.call(via_tuple(queue_id), {:join_queue, version, {user_id, sess_pid}, party_id})
+      queue_id
+      |> via_tuple()
+      |> GenServer.call({:join_queue, version, {user_id, sess_pid}, party_id})
     end
   catch
-    :exit, {:noproc, _} -> {:error, :invalid_queue}
+    :exit, {:noproc, _details} -> {:error, :invalid_queue}
   end
 
   @doc """
@@ -205,11 +210,11 @@ defmodule Teiserver.Matchmaking.QueueServer do
   @spec party_join_queue(id(), version :: String.t(), Party.id(), [T.userid()]) ::
           {:ok, queue_pid :: pid()} | {:error, reason :: term()}
   def party_join_queue(queue_id, version, party_id, player_ids) do
-    game_type = GenServer.call(via_tuple(queue_id), :get_game_type)
+    game_type = queue_id |> via_tuple() |> GenServer.call(:get_game_type)
     member = Member.new(player_ids, game_type)
-    GenServer.call(via_tuple(queue_id), {:party_join_queue, version, party_id, member})
+    queue_id |> via_tuple() |> GenServer.call({:party_join_queue, version, party_id, member})
   catch
-    :exit, {:noproc, _} -> {:no, :invalid_queue}
+    :exit, {:noproc, _details} -> {:no, :invalid_queue}
   end
 
   @type leave_result :: :ok | {:error, {:not_queued, :invalid_queue}}
@@ -220,9 +225,9 @@ defmodule Teiserver.Matchmaking.QueueServer do
   """
   @spec leave_queue(id(), T.userid()) :: leave_result()
   def leave_queue(queue_id, player_id) do
-    GenServer.call(via_tuple(queue_id), {:leave_queue, player_id})
+    queue_id |> via_tuple() |> GenServer.call({:leave_queue, player_id})
   catch
-    :exit, {:noproc, _} -> {:error, :invalid_queue}
+    :exit, {:noproc, _details} -> {:error, :invalid_queue}
   end
 
   @doc """
@@ -232,11 +237,11 @@ defmodule Teiserver.Matchmaking.QueueServer do
   """
   @spec disband_pairing(id(), pid()) :: :ok
   def disband_pairing(queue_id, room_pid) do
-    GenServer.call(via_tuple(queue_id), {:disband_pairing, room_pid})
+    queue_id |> via_tuple() |> GenServer.call({:disband_pairing, room_pid})
   catch
     # if the queue is gone for whatever reason, the pairing room should be
     # killed as well, and nothing will happen
-    :exit, {:noproc, _} -> :ok
+    :exit, {:noproc, _details} -> :ok
   end
 
   @spec start_link(state()) :: GenServer.on_start()
@@ -246,7 +251,7 @@ defmodule Teiserver.Matchmaking.QueueServer do
     )
   end
 
-  @impl true
+  @impl GenServer
   def init(state) do
     Logger.metadata(actor_type: :mm_queue, actor_id: state.id)
 
@@ -257,14 +262,15 @@ defmodule Teiserver.Matchmaking.QueueServer do
     {:ok, state}
   end
 
-  @impl true
+  @impl GenServer
   def handle_call(:get_game_type, _from, state) do
     game_type = MatchLib.game_type(state.queue.team_size, state.queue.team_count)
     {:reply, game_type, state}
   end
 
-  def handle_call({:join_queue, version, _}, _from, state) when state.queue.version != version,
-    do: {:reply, {:error, :version_mismatch}, state}
+  def handle_call({:join_queue, version, _member_data}, _from, state)
+      when state.queue.version != version,
+      do: {:reply, {:error, :version_mismatch}, state}
 
   def handle_call({:join_queue, _version, {new_member, sess_pid}}, _from, state) do
     case member_can_join_queue?(new_member.player_ids, state) do
@@ -284,7 +290,7 @@ defmodule Teiserver.Matchmaking.QueueServer do
     end
   end
 
-  def handle_call({:join_queue, version, _, _party_id}, _from, state)
+  def handle_call({:join_queue, version, _player_data, _party_id}, _from, state)
       when state.queue.version != version,
       do: {:reply, {:error, :version_mismatch}, state}
 
@@ -292,10 +298,10 @@ defmodule Teiserver.Matchmaking.QueueServer do
     with :ok <- member_can_join_queue?([player_id], state),
          pending when pending != nil <- Map.get(state.pending_parties, party_id) do
       case Enum.split_with(pending.waiting_for, &(&1 == player_id)) do
-        {[], _} ->
+        {[], _rest} ->
           {:reply, {:error, :invalid_queue}, state}
 
-        {[_], []} ->
+        {[_player_id], []} ->
           member = pending.member
           :timer.cancel(pending.tref)
 
@@ -310,7 +316,7 @@ defmodule Teiserver.Matchmaking.QueueServer do
           broadcast_update(new_state)
           {:reply, {:ok, self()}, new_state}
 
-        {[_], rest} ->
+        {[_player_id], rest} ->
           pending =
             pending
             |> Map.replace!(:waiting_for, rest)
@@ -332,7 +338,7 @@ defmodule Teiserver.Matchmaking.QueueServer do
     end
   end
 
-  @impl true
+  @impl GenServer
   def handle_call(:get_stats, _from, state) do
     player_count = calculate_player_count(state)
     private_stats = Map.put(state.stats, :player_count, player_count)
@@ -348,7 +354,7 @@ defmodule Teiserver.Matchmaking.QueueServer do
     {:reply, {:ok, public_stats}, state}
   end
 
-  @impl true
+  @impl GenServer
   def handle_call({:leave_queue, player_id}, _from, state) do
     case remove_player(player_id, state) do
       :not_queued ->
@@ -366,15 +372,15 @@ defmodule Teiserver.Matchmaking.QueueServer do
   Rejoining the queue is not handled here, players will do that on their end
   """
   def handle_call({:disband_pairing, room_pid}, _from, state) do
-    case Enum.split_with(state.pairings, fn {p, _} -> p == room_pid end) do
-      {[{_, player_ids}], rest} ->
+    case Enum.split_with(state.pairings, fn {p, _player_ids} -> p == room_pid end) do
+      {[{_pid, player_ids}], rest} ->
         monitors =
           demonitor_players(player_ids, state.monitors)
           |> MC.demonitor_by_val({:room, room_pid, player_ids})
 
         {:reply, :ok, %{state | pairings: rest, monitors: monitors}}
 
-      _ ->
+      _other ->
         {:reply, :ok, state}
     end
   end
@@ -411,7 +417,7 @@ defmodule Teiserver.Matchmaking.QueueServer do
     end
   end
 
-  @impl true
+  @impl GenServer
   def handle_info({:DOWN, ref, :process, _object, _reason}, state) do
     val = MC.get_val(state.monitors, ref)
     state = Map.update!(state, :monitors, &MC.demonitor_by_val(&1, val))
@@ -445,7 +451,7 @@ defmodule Teiserver.Matchmaking.QueueServer do
     end
   end
 
-  @impl true
+  @impl GenServer
   def handle_info(:tick, state), do: handle_info({:tick, DateTime.utc_now()}, state)
 
   def handle_info({:tick, now}, state) do
@@ -528,7 +534,7 @@ defmodule Teiserver.Matchmaking.QueueServer do
 
   defp remove_player(player_id, state) do
     pending_party =
-      Enum.find(state.pending_parties, fn {_, x} ->
+      Enum.find(state.pending_parties, fn {_party_id, x} ->
         Enum.any?(x.waiting_for, &(player_id == &1)) || Enum.any?(x.joined, &(player_id == &1))
       end)
 
@@ -544,7 +550,7 @@ defmodule Teiserver.Matchmaking.QueueServer do
       end)
 
     {pairing_to_remove, other_pairings} =
-      Enum.split_with(state.pairings, fn {_, members} ->
+      Enum.split_with(state.pairings, fn {_pid, members} ->
         Enum.member?(members, player_id)
       end)
 
@@ -552,7 +558,7 @@ defmodule Teiserver.Matchmaking.QueueServer do
       {[], []} ->
         :not_queued
 
-      {[to_remove], _} ->
+      {[to_remove], _pairing_to_remove} ->
         monitors = demonitor_players(to_remove.player_ids, state.monitors)
 
         for p_id when p_id != player_id <- to_remove.player_ids do
@@ -561,8 +567,9 @@ defmodule Teiserver.Matchmaking.QueueServer do
 
         {:ok, %{state | members: new_members, monitors: monitors}}
 
-      # there is no case with multiple member to remove since this is prevented when adding to a queue
-      {_, [{room_pid, canceled_members}]} ->
+      # there is no case with multiple member to remove since
+      # this is prevented when adding to a queue
+      {_to_remove, [{room_pid, canceled_members}]} ->
         monitors = demonitor_players(canceled_members, state.monitors)
         PairingRoom.cancel(room_pid, player_id)
         {:ok, %{state | pairings: other_pairings, monitors: monitors}}
@@ -587,7 +594,7 @@ defmodule Teiserver.Matchmaking.QueueServer do
       |> MapSet.new()
 
     pairing_player_ids =
-      for {_, player_ids} <- state.pairings, p_id <- player_ids do
+      for {_pid, player_ids} <- state.pairings, p_id <- player_ids do
         p_id
       end
       |> MapSet.new()
@@ -641,7 +648,7 @@ defmodule Teiserver.Matchmaking.QueueServer do
   @spec match_members(state()) :: :no_match | {:match, [[[Member.t()]]]}
   def match_members(state) do
     {alg_module, alg_state} = state.queue.algo
-    # credo:disable-for-next-line Credo.Check.Refactor.Apply
+
     apply(alg_module, :get_matches, [state.members, alg_state])
   end
 
@@ -669,6 +676,6 @@ defmodule Teiserver.Matchmaking.QueueServer do
   defp broadcast_update(state) do
     player_count = calculate_player_count(state)
     stats = Map.put(state.stats, :player_count, player_count)
-    Teiserver.Matchmaking.broadcast_queue_update(state.id, stats)
+    Matchmaking.broadcast_queue_update(state.id, stats)
   end
 end

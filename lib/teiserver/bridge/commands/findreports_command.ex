@@ -2,20 +2,21 @@ defmodule Teiserver.Bridge.Commands.FindreportsCommand do
   @moduledoc """
   Calls the bot to link all connected reports discord messages
   """
-  alias Teiserver.{Communication, Config}
+  alias Teiserver.Communication
+  alias Teiserver.Config
   alias Teiserver.Moderation
   require Logger
 
   @behaviour Teiserver.Bridge.BridgeCommandBehaviour
   @ephemeral 64
 
-  @impl true
+  @impl Teiserver.Bridge.BridgeCommandBehaviour
   @spec name() :: String.t()
-  def name(), do: "findreports"
+  def name, do: "findreports"
 
-  @impl true
+  @impl Teiserver.Bridge.BridgeCommandBehaviour
   @spec cmd_definition() :: map()
-  def cmd_definition() do
+  def cmd_definition do
     %{
       name: "findreports",
       description: "Find reports by the action message id",
@@ -44,7 +45,7 @@ defmodule Teiserver.Bridge.Commands.FindreportsCommand do
     }
   end
 
-  @impl true
+  @impl Teiserver.Bridge.BridgeCommandBehaviour
   @spec execute(interaction :: Nostrum.Struct.Interaction.t(), options_map :: map()) :: map()
   def execute(_interaction, options_map) do
     # Default to message_id
@@ -74,7 +75,7 @@ defmodule Teiserver.Bridge.Commands.FindreportsCommand do
       "chat" ->
         Config.get_site_config_cache("teiserver.Discord channel #moderation-reports")
 
-      _ ->
+      _other ->
         Logger.error("Unknown report type #{type}")
         raise "Unknown report type #{type}"
     end

@@ -1,21 +1,25 @@
 defmodule TeiserverWeb.Communication.ChatLive.Room do
   @moduledoc false
-  use TeiserverWeb, :live_view
-  alias Teiserver.{Account, Chat}
-  alias Teiserver.Chat.RoomMessage
+
   alias Phoenix.PubSub
+  alias Teiserver.Account
+  alias Teiserver.Chat
+  alias Teiserver.Chat.RoomMessage
+  alias Teiserver.Chat.RoomMessageLib
+  alias Teiserver.Room
+  use TeiserverWeb, :live_view
 
   @message_count 25
 
   @flood_protect_window_size 5
   @flood_protect_message_count 5
 
-  @impl true
+  @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     socket =
       socket
       |> assign(:site_menu_active, "communication")
-      |> assign(:view_colour, Chat.RoomMessageLib.colours())
+      |> assign(:view_colour, RoomMessageLib.colours())
       |> assign(:usernames, %{})
       |> assign(:last_poster_id, nil)
       |> assign(:message_changeset, nil)
@@ -26,7 +30,7 @@ defmodule TeiserverWeb.Communication.ChatLive.Room do
     {:ok, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_params(%{"room_name" => room_name}, _url, socket) do
     socket =
       socket
@@ -38,14 +42,14 @@ defmodule TeiserverWeb.Communication.ChatLive.Room do
     {:noreply, socket}
   end
 
-  def handle_params(_, _url, socket) do
+  def handle_params(_params, _url, socket) do
     socket
     |> redirect(to: ~p"/chat/room/main")
 
     {:noreply, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_info(%{channel: "room_chat"} = event, socket) do
     user = Account.get_user_by_id(event.user_id)
 
@@ -66,7 +70,7 @@ defmodule TeiserverWeb.Communication.ChatLive.Room do
      |> assign(:message_changeset, new_message_changeset())}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_event("load_more", _params, socket) do
     messages =
       Chat.list_room_messages(
@@ -115,7 +119,7 @@ defmodule TeiserverWeb.Communication.ChatLive.Room do
         })
 
       true ->
-        Teiserver.Room.send_message(current_user.id, room_name, content)
+        Room.send_message(current_user.id, room_name, content)
         :ok
     end
 
@@ -160,7 +164,7 @@ defmodule TeiserverWeb.Communication.ChatLive.Room do
   end
 
   defp add_message_metadata(messages, last_poster_id) do
-    {messages, _} =
+    {messages, _last_poster_id} =
       messages
       |> Enum.map_reduce(last_poster_id, fn message, lp_id ->
         same_poster = message.user_id == lp_id
@@ -185,7 +189,7 @@ defmodule TeiserverWeb.Communication.ChatLive.Room do
     end)
   end
 
-  defp new_message_changeset() do
+  defp new_message_changeset do
     %RoomMessage{}
     |> RoomMessage.changeset(%{
       "room" => "",
@@ -201,13 +205,13 @@ defmodule TeiserverWeb.Communication.ChatLive.Room do
         current_user == nil ->
           "no user found, the website thinks you are not logged into it"
 
-        Account.is_restricted?(current_user, ["Login"]) ->
+        Account.restricted?(current_user.id, ["Login"]) ->
           "you are banned"
 
-        Account.is_restricted?(current_user, ["All chat", "Room chat", "Game chat"]) ->
+        Account.restricted?(current_user.id, ["All chat", "Room chat", "Game chat"]) ->
           "you are muted"
 
-        Account.is_restricted?(current_user, "Bridging") ->
+        Account.restricted?(current_user.id, "Bridging") ->
           "you are unbridged and thus cannot use the web-chat"
 
         current_user.smurf_of_id != nil ->

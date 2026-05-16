@@ -3,7 +3,7 @@ defmodule Teiserver.Config.UserConfigTypes.PrivacyConfigs do
   import Teiserver.Config, only: [add_user_config_type: 1]
 
   @spec create() :: :ok
-  def create() do
+  def create do
     privacy_levels = ["Only myself", "Friends", "Any player", "Completely public"]
 
     add_user_config_type(%{
@@ -31,15 +31,6 @@ defmodule Teiserver.Config.UserConfigTypes.PrivacyConfigs do
       opts: [choices: privacy_levels],
       default: "Completely public",
       description: "Controls who can see your accolades from your profile."
-    })
-
-    add_user_config_type(%{
-      key: "privacy.Achievement visibility",
-      section: "Privacy",
-      type: "select",
-      opts: [choices: privacy_levels],
-      default: "Any player",
-      description: "Controls who can see your achievements from your profile."
     })
 
     add_user_config_type(%{

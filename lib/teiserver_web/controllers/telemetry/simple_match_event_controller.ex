@@ -1,7 +1,9 @@
 defmodule TeiserverWeb.Telemetry.SimpleMatchEventController do
+  alias Teiserver.Account
+  alias Teiserver.Telemetry
+  alias Teiserver.Telemetry.ExportSimpleMatchEventsTask
+  alias Teiserver.Telemetry.SimpleMatchEventQueries
   use TeiserverWeb, :controller
-  alias Teiserver.{Account, Telemetry}
-  alias Teiserver.Telemetry.{ExportSimpleMatchEventsTask, SimpleMatchEventQueries}
   require Logger
 
   plug(AssignPlug,
@@ -10,6 +12,7 @@ defmodule TeiserverWeb.Telemetry.SimpleMatchEventController do
   )
 
   plug Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Auth.Server,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}
@@ -60,7 +63,7 @@ defmodule TeiserverWeb.Telemetry.SimpleMatchEventController do
         "7 days" -> Timex.now() |> Timex.shift(days: -7)
         "14 days" -> Timex.now() |> Timex.shift(days: -14)
         "31 days" -> Timex.now() |> Timex.shift(days: -31)
-        _ -> Timex.now() |> Timex.shift(days: -7)
+        _other -> Timex.now() |> Timex.shift(days: -7)
       end
 
     data_by_match_id =

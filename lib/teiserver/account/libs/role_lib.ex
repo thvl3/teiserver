@@ -97,12 +97,11 @@ defmodule Teiserver.Account.RoleLib do
     # Privileged
     %{name: "VIP", colour: "#AA8833", icon: "fa-solid fa-sparkles", contains: ~w()},
     %{name: "Streamer", colour: "#660066", icon: "fa-brands fa-twitch", contains: ~w()},
-    %{name: "Tournament", colour: "#0000AA", icon: "fa-solid fa-trophy", contains: ~w()},
     %{
       name: "Caster",
       colour: "#660066",
       icon: "fa-solid fa-microphone-lines",
-      contains: ~w(Streamer Tournament),
+      contains: ~w(Streamer),
       badge: true
     },
     %{name: "Donor", colour: "#0066AA", icon: "fa-solid fa-euro", contains: ~w(), badge: true},
@@ -214,12 +213,12 @@ defmodule Teiserver.Account.RoleLib do
              |> Map.new()
 
   @spec all_role_names() :: list()
-  def all_role_names() do
+  def all_role_names do
     Map.keys(@role_data)
   end
 
   @spec role_data() :: map()
-  def role_data() do
+  def role_data do
     @role_data
   end
 
@@ -235,22 +234,22 @@ defmodule Teiserver.Account.RoleLib do
   end
 
   @spec global_roles :: [String.t()]
-  def global_roles() do
+  def global_roles do
     ~w(Default Armada Cortex Raptor Scavenger)
   end
 
   @spec management_roles :: [String.t()]
-  def management_roles() do
+  def management_roles do
     ~w(Server Admin)
   end
 
   @spec moderation_roles :: [String.t()]
-  def moderation_roles() do
+  def moderation_roles do
     ~w(Moderator Reviewer Overwatch)
   end
 
   @spec staff_roles :: [String.t()]
-  def staff_roles() do
+  def staff_roles do
     [
       "Core",
       "Engine",
@@ -264,7 +263,7 @@ defmodule Teiserver.Account.RoleLib do
   end
 
   @spec community_roles :: [String.t()]
-  def community_roles() do
+  def community_roles do
     [
       "Mentor",
       "Academy manager",
@@ -276,12 +275,12 @@ defmodule Teiserver.Account.RoleLib do
   end
 
   @spec privileged_roles :: [String.t()]
-  def privileged_roles() do
-    ~w(Bot VIP Caster Donor Tournament)
+  def privileged_roles do
+    ~w(Bot VIP Caster Donor)
   end
 
   @spec property_roles :: [String.t()]
-  def property_roles() do
+  def property_roles do
     ["Trusted", "BAR+", "Verified", "Streamer", "Tournament winner"]
   end
 
@@ -300,7 +299,7 @@ defmodule Teiserver.Account.RoleLib do
     global_roles() ++ property_roles()
   end
 
-  def allowed_role_management(_) do
+  def allowed_role_management(_role) do
     []
   end
 

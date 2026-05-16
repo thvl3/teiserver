@@ -1,7 +1,9 @@
 defmodule Teiserver.Telemetry.ComplexMatchEventTypeLib do
   @moduledoc false
+
+  alias Teiserver.Telemetry.ComplexMatchEventType
+  alias Teiserver.Telemetry.ComplexMatchEventTypeQueries
   use TeiserverWeb, :library_newform
-  alias Teiserver.Telemetry.{ComplexMatchEventType, ComplexMatchEventTypeQueries}
 
   # Helper function
   @spec get_or_add_complex_match_event_type(String.t()) :: non_neg_integer()
@@ -25,7 +27,7 @@ defmodule Teiserver.Telemetry.ComplexMatchEventTypeLib do
 
           event_type.id
 
-        [%{id: id} | _] ->
+        [%{id: id} | _rest] ->
           id
       end
     end)
@@ -110,7 +112,10 @@ defmodule Teiserver.Telemetry.ComplexMatchEventTypeLib do
   """
   @spec update_complex_match_event_type(ComplexMatchEventType, map) ::
           {:ok, ComplexMatchEventType} | {:error, Ecto.Changeset}
-  def update_complex_match_event_type(%ComplexMatchEventType{} = complex_match_event_type, attrs) do
+  def update_complex_match_event_type(
+        %ComplexMatchEventType{} = complex_match_event_type,
+        attrs
+      ) do
     complex_match_event_type
     |> ComplexMatchEventType.changeset(attrs)
     |> Repo.update()

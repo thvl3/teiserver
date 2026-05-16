@@ -1,12 +1,14 @@
 defmodule Teiserver.Account.RetentionReport do
+  @moduledoc false
+  alias Teiserver.Account
   alias Teiserver.Helper.DatePresets
-  alias Teiserver.{Account, Logging}
+  alias Teiserver.Logging
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-campground"
+  def icon, do: "fa-solid fa-campground"
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Admin"
+  def permissions, do: "Moderator"
 
   @max_key 30
 
@@ -46,7 +48,7 @@ defmodule Teiserver.Account.RetentionReport do
         search: [
           inserted_after: start_datetime,
           data_greater_than: {"last_login_mins", "0"},
-          verified: true
+          has_role: "Verified"
         ],
         limit: :infinity
       )
@@ -64,7 +66,7 @@ defmodule Teiserver.Account.RetentionReport do
                   nil
                 end
 
-              _ ->
+              _date ->
                 acc
             end
           end)
@@ -85,7 +87,7 @@ defmodule Teiserver.Account.RetentionReport do
         fn %{last_login: value} ->
           value
         end,
-        fn _ -> 1 end
+        fn _account -> 1 end
       )
       |> Map.new(fn {days, userlist} -> {days, Enum.count(userlist)} end)
 
@@ -96,7 +98,7 @@ defmodule Teiserver.Account.RetentionReport do
         fn %{last_played: value} ->
           value
         end,
-        fn _ -> 1 end
+        fn _account -> 1 end
       )
       |> Map.new(fn {days, userlist} -> {days, Enum.count(userlist)} end)
 

@@ -1,20 +1,22 @@
 defmodule Teiserver.Lobby.Commands.ExplainCommand do
-  @behaviour Teiserver.Lobby.LobbyCommandBehaviour
   @moduledoc """
   Documentation for explain command here
   """
 
+  alias Teiserver.Account.Auth
+  alias Teiserver.Battle
+  alias Teiserver.Coordinator
   alias Teiserver.Data.Types, as: T
-  alias Teiserver.{Account, Battle, Coordinator}
   import Teiserver.Helper.NumberHelper, only: [round: 2]
+  @behaviour Teiserver.Lobby.LobbyCommandBehaviour
 
   @splitter "------------------------------------------------------"
 
-  @impl true
+  @impl Teiserver.Lobby.LobbyCommandBehaviour
   @spec name() :: String.t()
-  def name(), do: "explain"
+  def name, do: "explain"
 
-  @impl true
+  @impl Teiserver.Lobby.LobbyCommandBehaviour
   @spec execute(T.lobby_server_state(), map) :: T.lobby_server_state()
   def execute(state, %{userid: userid} = _cmd) do
     balance =
@@ -23,7 +25,7 @@ defmodule Teiserver.Lobby.Commands.ExplainCommand do
 
     if balance do
       moderator_messages =
-        if Account.is_moderator?(userid) do
+        if Auth.admin?(userid) or Auth.moderator?(userid) do
           time_taken =
             cond do
               balance.time_taken < 1000 ->

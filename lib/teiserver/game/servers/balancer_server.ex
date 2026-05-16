@@ -1,10 +1,12 @@
 defmodule Teiserver.Game.BalancerServer do
+  @moduledoc false
+  alias Teiserver.Battle
+  alias Teiserver.Battle.BalanceLib
+  alias Teiserver.Battle.MatchLib
+  alias Teiserver.Coordinator
+  alias Teiserver.Data.Types, as: T
   use GenServer
   require Logger
-  alias Teiserver.Data.Types, as: T
-  alias Teiserver.Battle.BalanceLib
-  alias Teiserver.{Battle, Coordinator}
-  alias Teiserver.Battle.MatchLib
 
   @tick_interval 2_000
   # Balance algos that allow fuzz; randomness will be added to match rating before processing
@@ -14,7 +16,7 @@ defmodule Teiserver.Game.BalancerServer do
     GenServer.start_link(__MODULE__, opts[:data], [])
   end
 
-  @impl true
+  @impl GenServer
   # http://planetspads.free.fr/spads/doc/spadsPluginApiDoc.html#balanceBattle-self-players-bots-clanMode-nbTeams-teamSize
   def handle_call({:make_balance, team_count, call_opts}, _from, state) do
     opts =
@@ -25,7 +27,7 @@ defmodule Teiserver.Game.BalancerServer do
     {:reply, balance, new_state}
   end
 
-  @impl true
+  @impl GenServer
   # http://planetspads.free.fr/spads/doc/spadsPluginApiDoc.html#balanceBattle-self-players-bots-clanMode-nbTeams-teamSize
   def handle_call({:make_balance, team_count, call_opts, players}, _from, state) do
     opts =
@@ -38,9 +40,10 @@ defmodule Teiserver.Game.BalancerServer do
 
   def handle_call(:get_balance_mode, _from, %{last_balance_hash: hash} = state) do
     result =
-      cond do
-        state.last_balance_hash == hash -> state.last_balance_result
-        true -> nil
+      if state.last_balance_hash == hash do
+        state.last_balance_result
+      else
+        nil
       end
 
     {:reply, result.balance_mode, state}
@@ -48,9 +51,10 @@ defmodule Teiserver.Game.BalancerServer do
 
   def handle_call(:get_current_balance, _from, %{last_balance_hash: hash} = state) do
     result =
-      cond do
-        state.last_balance_hash == hash -> state.last_balance_result
-        true -> nil
+      if state.last_balance_hash == hash do
+        state.last_balance_result
+      else
+        nil
       end
 
     {:reply, result, state}
@@ -75,7 +79,7 @@ defmodule Teiserver.Game.BalancerServer do
     {:reply, result, state}
   end
 
-  @impl true
+  @impl GenServer
   def handle_cast(:reset_hashes, state) do
     {:noreply, %{state | last_balance_hash: nil, last_balance_result: nil}}
   end
@@ -111,11 +115,11 @@ defmodule Teiserver.Game.BalancerServer do
   end
 
   def handle_cast(:reinit, state) do
-    new_state = Map.merge(empty_state(state.lobby_id), state)
+    new_state = state.lobby_id |> empty_state() |> Map.merge(state)
     {:noreply, new_state}
   end
 
-  @impl true
+  @impl GenServer
   def handle_info(:tick, state) do
     {:noreply, state}
   end
@@ -194,8 +198,8 @@ defmodule Teiserver.Game.BalancerServer do
     |> Base.encode64()
   end
 
-  # long term, there in interest in confirming do_make_balance is a stateless pure function, which would make it easier
-  # to test
+  # long term, there in interest in confirming do_make_balance
+  # is a stateless pure function, which would make it easier to test
   @spec do_make_balance(non_neg_integer(), [T.client()], List.t()) :: map()
   defp do_make_balance(team_count, players, opts) do
     team_size = calculate_team_size(team_count, players)
@@ -207,32 +211,82 @@ defmodule Teiserver.Game.BalancerServer do
         v -> v
       end
 
-    if opts[:allow_groups] do
-      party_result = make_grouped_balance(team_count, players, game_type, opts)
-      has_parties? = Map.get(party_result, :has_parties?, true)
+    result =
+      if opts[:allow_groups] do
+        party_result = make_grouped_balance(team_count, players, game_type, opts)
+        has_parties? = Map.get(party_result, :has_parties?, true)
 
-      if has_parties? && party_result.deviation > opts[:max_deviation] do
-        make_solo_balance(
-          team_count,
-          players,
-          game_type,
-          [
-            "Tried grouped mode, got a deviation of #{party_result.deviation} and reverted to solo mode"
-          ],
-          opts
-        )
+        if has_parties? && party_result.deviation > opts[:max_deviation] do
+          make_solo_balance(
+            team_count,
+            players,
+            game_type,
+            [
+              "Tried grouped mode, got a deviation of #{party_result.deviation} and reverted to solo mode"
+            ],
+            opts
+          )
+        else
+          party_result
+        end
       else
-        party_result
+        make_solo_balance(team_count, players, game_type, [], opts)
       end
+
+    maybe_shuffle_teams(result, team_count)
+  end
+
+  # Randomly shuffle team assignments to avoid lower-rated players always being
+  # placed in team 1 due to deterministic ordering in balance algorithms.
+  # Applied to all game modes: swaps teams 1 and 2 for 2-team games, randomly
+  # permutes all team assignments for Team FFA (N > 2 teams).
+  @spec maybe_shuffle_teams(map(), non_neg_integer()) :: map()
+  defp maybe_shuffle_teams(result, 2) do
+    if :rand.uniform(2) == 1 do
+      shuffle_teams(result, %{1 => 2, 2 => 1})
     else
-      make_solo_balance(team_count, players, game_type, [], opts)
+      result
     end
   end
 
-  # This function is run before balancing but calculates the expected team size after balancing, which is important for
+  defp maybe_shuffle_teams(result, team_count) when team_count > 2 do
+    keys = Enum.to_list(1..team_count)
+    shuffled = Enum.shuffle(keys)
+
+    mapping =
+      Enum.zip(keys, shuffled)
+      |> Map.new()
+
+    shuffle_teams(result, mapping)
+  end
+
+  defp maybe_shuffle_teams(result, _team_count), do: result
+
+  # This function is public only for testing; it should not be called otherwise
+  @spec shuffle_teams(map(), map()) :: map()
+  def shuffle_teams(result, mapping) do
+    team_map_keys = ~w(team_players team_groups ratings captains team_sizes means stdevs)a
+
+    Enum.reduce(team_map_keys, result, fn key, acc ->
+      if Map.has_key?(acc, key) do
+        team_map = Map.fetch!(acc, key)
+
+        if Map.has_key?(team_map, 1) and Map.has_key?(team_map, 2) do
+          Map.put(acc, key, Map.new(team_map, fn {k, v} -> {Map.get(mapping, k, k), v} end))
+        end
+      else
+        acc
+      end
+    end)
+  end
+
+  # This function is run before balancing but calculates the
+  # expected team size after balancing, which is important for
   # determining whether a game is small or large team.
-  # After balancing the team size will equal the number of players divided by team count rounded up. So if team 1 has
-  # 6 players and team 2 has 4 players, after balancing this will become a 5v5 not 6v4.
+  # After balancing the team size will equal the number of
+  # players divided by team count rounded up. So if team 1 has
+  # 6 players and team 2 has 4 players, after balancing this
+  # will become a 5v5 not 6v4.
   # After balancing, the team size will be as even as possible.
   @spec calculate_team_size(non_neg_integer(), [T.client()]) :: non_neg_integer()
   def calculate_team_size(team_count, players) do
@@ -322,7 +376,7 @@ defmodule Teiserver.Game.BalancerServer do
     })
   end
 
-  @impl true
+  @impl GenServer
   @spec init(map()) :: {:ok, T.balance_server_state()}
   def init(opts) do
     lobby_id = opts[:lobby_id]

@@ -1,13 +1,14 @@
 defmodule Teiserver.Account.UserTokenLib do
   @moduledoc false
-  use TeiserverWeb, :library
+
   alias Teiserver.Account.UserToken
+  use TeiserverWeb, :library
 
   @spec colours :: atom
-  def colours(), do: :info
+  def colours, do: :info
 
   @spec icon :: String.t()
-  def icon(), do: "fa-solid fa-hexagon-check"
+  def icon, do: "fa-solid fa-hexagon-check"
 
   # Queries
   @spec query_user_tokens() :: Ecto.Query.t()
@@ -26,8 +27,8 @@ defmodule Teiserver.Account.UserTokenLib do
   end
 
   @spec _search(Ecto.Query.t(), atom, any) :: Ecto.Query.t()
-  def _search(query, _, ""), do: query
-  def _search(query, _, nil), do: query
+  def _search(query, _key, ""), do: query
+  def _search(query, _key, nil), do: query
 
   def _search(query, :id, id) do
     from user_tokens in query,

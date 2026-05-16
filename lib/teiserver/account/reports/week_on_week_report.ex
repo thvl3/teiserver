@@ -1,12 +1,14 @@
 defmodule Teiserver.Account.WeekOnWeekReport do
-  alias Teiserver.{Logging}
-  alias Teiserver.Helper.{TimexHelper, NumberHelper}
+  @moduledoc false
+  alias Teiserver.Helper.NumberHelper
+  alias Teiserver.Helper.TimexHelper
+  alias Teiserver.Logging
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-calendar"
+  def icon, do: "fa-solid fa-calendar"
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Admin"
+  def permissions, do: "Moderator"
 
   @spec run(Plug.Conn.t(), map()) :: map()
   def run(_conn, params) do
@@ -28,7 +30,7 @@ defmodule Teiserver.Account.WeekOnWeekReport do
     data_map =
       logs
       |> Map.new(fn log ->
-        {_, week} = Timex.iso_week(log.date)
+        {_year, week} = Timex.iso_week(log.date)
         weekday = Timex.weekday(log.date)
 
         key = {week, weekday}
@@ -93,7 +95,7 @@ defmodule Teiserver.Account.WeekOnWeekReport do
       case params["metric"] do
         "Total time" -> &TimexHelper.represent_minutes/1
         "Play time" -> &TimexHelper.represent_minutes/1
-        _ -> fn x -> x end
+        _other -> fn x -> x end
       end
 
     data_map =

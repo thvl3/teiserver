@@ -2,12 +2,14 @@ defmodule Teiserver.Battle.BalanceLib do
   @moduledoc """
   A set of functions related to balance, if you are looking to see how balance is implemented this is the place. Ratings are calculated via Teiserver.Game.MatchRatingLib and are used here. Please note ratings and balance are two very different things and complaints about imbalanced games need to be correct in addressing balance vs ratings.
   """
-  alias Teiserver.{Account, Config}
-  alias Teiserver.Data.Types, as: T
+
+  alias Teiserver.Account
   alias Teiserver.Battle.Balance.BalanceTypes, as: BT
+  alias Teiserver.Config
+  alias Teiserver.Data.Types, as: T
   alias Teiserver.Game.MatchRatingLib
-  import Teiserver.Helper.NumberHelper, only: [int_parse: 1, round: 2]
   require Logger
+  import Teiserver.Helper.NumberHelper, only: [int_parse: 1, round: 2]
   # These are default values and can be overridden as part of the call to create_balance()
 
   # Upper boundary is how far above the group value the members can be, lower is how far below it
@@ -28,7 +30,7 @@ defmodule Teiserver.Battle.BalanceLib do
   @shuffle_first_pick true
 
   @spec defaults() :: map()
-  def defaults() do
+  def defaults do
     %{
       max_deviation: Config.get_site_config_cache("teiserver.Max deviation"),
       rating_lower_boundary: @rating_lower_boundary,
@@ -40,12 +42,12 @@ defmodule Teiserver.Battle.BalanceLib do
     }
   end
 
-  def get_default_algorithm() do
+  def get_default_algorithm do
     Config.get_site_config_cache("teiserver.Default balance algorithm")
   end
 
   @spec algorithm_modules() :: %{String.t() => module}
-  def algorithm_modules() do
+  def algorithm_modules do
     %{
       "loser_picks" => Teiserver.Battle.Balance.LoserPicks,
       "force_party" => Teiserver.Battle.Balance.ForceParty,
@@ -63,10 +65,10 @@ defmodule Teiserver.Battle.BalanceLib do
   def get_allowed_algorithms(is_moderator) do
     result =
       if(is_moderator) do
-        Teiserver.Battle.BalanceLib.algorithm_modules() |> Map.keys()
+        algorithm_modules() |> Map.keys()
       else
         mod_only = ["force_party", "brute_force"]
-        Teiserver.Battle.BalanceLib.algorithm_modules() |> Map.drop(mod_only) |> Map.keys()
+        algorithm_modules() |> Map.drop(mod_only) |> Map.keys()
       end
 
     ["default" | result]
@@ -130,27 +132,30 @@ defmodule Teiserver.Battle.BalanceLib do
         ranks =
           Map.values(members)
           |> Enum.map(fn x ->
-            cond do
-              Map.has_key?(x, :rank) -> x.rank
-              true -> 0
+            if Map.has_key?(x, :rank) do
+              x.rank
+            else
+              0
             end
           end)
 
         uncertainties =
           Map.values(members)
           |> Enum.map(fn x ->
-            cond do
-              Map.has_key?(x, :uncertainty) -> x.uncertainty
-              true -> 0
+            if Map.has_key?(x, :uncertainty) do
+              x.uncertainty
+            else
+              0
             end
           end)
 
         names =
           members
           |> Enum.map(fn {id, details} ->
-            cond do
-              Map.has_key?(details, :name) -> details.name
-              true -> "#{id}"
+            if Map.has_key?(details, :name) do
+              details.name
+            else
+              "#{id}"
             end
           end)
 
@@ -183,19 +188,6 @@ defmodule Teiserver.Battle.BalanceLib do
     |> calculate_balance_stats()
     |> cleanup_result()
     |> Map.put(:time_taken, System.system_time(:microsecond) - start_time)
-    |> validate_result(groups, team_count, opts)
-  end
-
-  def validate_result(result, groups, team_count, opts) do
-    if(Enum.empty?(result.team_sizes)) do
-      Logger.error("Invalid balance result.")
-      Logger.error(result)
-      Logger.error("groups: #{Kernel.inspect(groups)}")
-      Logger.error("team_count: #{team_count}")
-      Logger.error("opts: #{Kernel.inspect(opts)}")
-    end
-
-    result
   end
 
   @doc """
@@ -211,8 +203,9 @@ defmodule Teiserver.Battle.BalanceLib do
           is_number(value) ->
             {user_id, get_user_rating_rank_old(user_id, value)}
 
-          # match_controller will use this condition when balancing using old data from game_rating_logs table
-          match?(%{"rating_value" => _}, value) ->
+          # match_controller will use this condition when
+          # balancing using old data from game_rating_logs
+          match?(%{"rating_value" => _rating}, value) ->
             pre_match_stats = get_prematch_stats(value)
 
             {user_id,
@@ -261,32 +254,28 @@ defmodule Teiserver.Battle.BalanceLib do
   # Take the balance result and add some extra fields to make using it easier
   defp expand_balance_result(balance_result) do
     team_groups =
-      cond do
-        Map.has_key?(balance_result, :team_groups) ->
-          balance_result.team_groups
-
-        true ->
-          balance_result.teams
-          |> Map.new(fn {team_id, groups} ->
-            {team_id, Enum.reverse(clean_groups(groups))}
-          end)
+      if Map.has_key?(balance_result, :team_groups) do
+        balance_result.team_groups
+      else
+        balance_result.teams
+        |> Map.new(fn {team_id, groups} ->
+          {team_id, groups |> clean_groups() |> Enum.reverse()}
+        end)
       end
 
     team_players =
-      cond do
-        Map.has_key?(balance_result, :team_players) ->
-          balance_result.team_players
+      if Map.has_key?(balance_result, :team_players) do
+        balance_result.team_players
+      else
+        team_groups
+        |> Map.new(fn {team, groups} ->
+          players =
+            groups
+            |> Enum.map(fn %{members: members} -> members end)
+            |> List.flatten()
 
-        true ->
-          team_groups
-          |> Map.new(fn {team, groups} ->
-            players =
-              groups
-              |> Enum.map(fn %{members: members} -> members end)
-              |> List.flatten()
-
-            {team, players}
-          end)
+          {team, players}
+        end)
       end
 
     Map.merge(balance_result, %{
@@ -308,7 +297,8 @@ defmodule Teiserver.Battle.BalanceLib do
 
   def matchup_groups(groups, solo_players, opts) do
     # First we want to re-sort these groups, we want to have the ones with the highest standard
-    # deviation looked at first, they are the least likely to be able to be matched but most likely to
+    # deviation looked at first, they are the least likely
+    # to be able to be matched but most likely to
     # help match others
     groups =
       groups
@@ -344,7 +334,7 @@ defmodule Teiserver.Battle.BalanceLib do
 
   # This matches when the next group is a size 1, we no longer need to pair up
   defp do_matchup_groups(
-         [%{count: 1} | _] = remaining_players,
+         [%{count: 1} | _rest] = remaining_players,
          logs,
          previous_paired_groups,
          _opts
@@ -359,7 +349,7 @@ defmodule Teiserver.Battle.BalanceLib do
 
     {_remaining_solo, found_groups} =
       1..(opts[:team_count] - 1)
-      |> Enum.reduce({remaining_groups, []}, fn _, {groups_to_search, results} ->
+      |> Enum.reduce({remaining_groups, []}, fn _index, {groups_to_search, results} ->
         result = find_comparable_group(group, groups_to_search, opts)
 
         new_groups_to_search =
@@ -438,7 +428,7 @@ defmodule Teiserver.Battle.BalanceLib do
           opts
         )
 
-      _ ->
+      _found ->
         # Calculate remaining solo players
         combined_member_ids =
           found_groups
@@ -722,16 +712,16 @@ defmodule Teiserver.Battle.BalanceLib do
       [] ->
         0
 
-      [_] ->
+      [_single] ->
         0
 
-      _ ->
+      _multiple ->
         raw_scores =
           scores
-          |> Enum.map(fn {_, s} -> s end)
+          |> Enum.map(fn {_team, s} -> s end)
 
         [max_score | remaining] = raw_scores
-        [min_score | _] = remaining
+        [min_score | _rest] = remaining
 
         # Max score skill needs always be at least one for this to not bork
         max_score = max(max_score, 1)
@@ -844,10 +834,7 @@ defmodule Teiserver.Battle.BalanceLib do
           |> Enum.map(fn g -> g.count end)
           |> Enum.sum()
 
-        cond do
-          total_count > group.count -> false
-          true -> true
-        end
+        total_count <= group.count
       end)
 
       # This part we are getting the relevant stat info to filter on
@@ -884,29 +871,31 @@ defmodule Teiserver.Battle.BalanceLib do
       [] ->
         :no_possible_combinations
 
-      _ ->
-        {selected_group, _, _} = hd(all_combinations)
+      _combinations ->
+        {selected_group, _diff, _score} = hd(all_combinations)
 
         # Now turn a list of groups into one group
         selected_group
-        |> Enum.reduce(%{members: [], ratings: [], count: 0, group_rating: 0, names: []}, fn solo,
-                                                                                             acc ->
-          %{
-            members: acc.members ++ solo.members,
-            ratings: acc.ratings ++ solo.ratings,
-            count: acc.count + solo.count,
-            group_rating: acc.group_rating + solo.group_rating,
-            names: acc.names ++ solo.names
-          }
-        end)
+        |> Enum.reduce(
+          %{members: [], ratings: [], count: 0, group_rating: 0, names: []},
+          fn solo, acc ->
+            %{
+              members: acc.members ++ solo.members,
+              ratings: acc.ratings ++ solo.ratings,
+              count: acc.count + solo.count,
+              group_rating: acc.group_rating + solo.group_rating,
+              names: acc.names ++ solo.names
+            }
+          end
+        )
     end
   end
 
   # First argument is the size of each combination
   # Second is the list of items to make a combination from
   @spec make_combinations(integer(), list) :: [list]
-  defp make_combinations(0, _), do: [[]]
-  defp make_combinations(_, []), do: []
+  defp make_combinations(0, _list), do: [[]]
+  defp make_combinations(_n, []), do: []
 
   defp make_combinations(n, [x | xs]) do
     if n < 0 do

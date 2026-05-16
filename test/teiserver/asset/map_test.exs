@@ -1,10 +1,10 @@
 defmodule Teiserver.Asset.MapTest do
-  use Teiserver.DataCase, async: true
   alias Teiserver.Asset
   alias Teiserver.AssetFixtures
+  use Teiserver.DataCase, async: true
 
   # define some valid map attr for convenience
-  def qs_attr(),
+  def qs_attr,
     do: %{
       spring_name: "Quicksilver Remake 1.24",
       display_name: "Quicksilver",
@@ -76,7 +76,7 @@ defmodule Teiserver.Asset.MapTest do
       AssetFixtures.create_map(qs_attr())
       AssetFixtures.create_map(altore_attr())
 
-      assert {:error, _} =
+      assert {:error, _changeset} =
                Asset.update_maps([
                  %{
                    display_name: "Quicksilver",

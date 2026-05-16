@@ -1,7 +1,9 @@
 defmodule Teiserver.Telemetry.ComplexServerEventQueries do
   @moduledoc false
-  use TeiserverWeb, :queries
+
+  alias Ecto.Adapters.SQL
   alias Teiserver.Telemetry.ComplexServerEvent
+  use TeiserverWeb, :queries
 
   # Queries
   @spec query_complex_server_events(list) :: Ecto.Query.t()
@@ -27,8 +29,8 @@ defmodule Teiserver.Telemetry.ComplexServerEventQueries do
   end
 
   @spec _where(Ecto.Query.t(), atom(), any()) :: Ecto.Query.t()
-  defp _where(query, _, ""), do: query
-  defp _where(query, _, nil), do: query
+  defp _where(query, _key, ""), do: query
+  defp _where(query, _key, nil), do: query
 
   defp _where(query, :id, id) do
     from complex_server_events in query,
@@ -126,7 +128,7 @@ defmodule Teiserver.Telemetry.ComplexServerEventQueries do
     LIMIT $5
     """
 
-    case Ecto.Adapters.SQL.query(Repo, query, [
+    case SQL.query(Repo, query, [
            key,
            event_type_id,
            start_datetime,

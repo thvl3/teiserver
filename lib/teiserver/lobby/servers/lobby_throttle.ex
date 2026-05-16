@@ -1,10 +1,11 @@
 defmodule Teiserver.Battle.LobbyThrottle do
+  @moduledoc false
   @doc """
   lobby_changes lists things that have changed about the battle lobby
   player_changes lists players that have changed (added, updated or removed!)
   """
-  use GenServer
   alias Phoenix.PubSub
+  use GenServer
   require Logger
 
   @update_interval 500
@@ -98,7 +99,7 @@ defmodule Teiserver.Battle.LobbyThrottle do
   end
 
   # Doesn't do anything at this stage
-  def handle_info({:lobby_update, _, _lobby_id, _data}, state) do
+  def handle_info({:lobby_update, _event, _lobby_id, _data}, state) do
     {:noreply, state}
   end
 

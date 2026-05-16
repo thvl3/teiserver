@@ -1,11 +1,13 @@
 defmodule TeiserverWeb.ErrorView do
+  alias Phoenix.Controller
+
   use TeiserverWeb, :view
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-exclamation-triangle"
+  def icon, do: "fa-solid fa-exclamation-triangle"
 
   @spec view_colour() :: atom
-  def view_colour(), do: :danger2
+  def view_colour, do: :danger2
 
   # If you want to customize a particular status code
   # for a certain format, you may uncomment below.
@@ -17,7 +19,7 @@ defmodule TeiserverWeb.ErrorView do
   # the template name. For example, "404.html" becomes
   # "Not Found".
   def template_not_found(template, _assigns) do
-    Phoenix.Controller.status_message_from_template(template)
+    Controller.status_message_from_template(template)
   end
 
   def render("403.html", assigns) do
@@ -28,7 +30,7 @@ defmodule TeiserverWeb.ErrorView do
     render("404_not_found.html", assigns)
   end
 
-  def render("500.html", %{reason: _} = error) do
+  def render("500.html", %{reason: _reason} = error) do
     case error.reason do
       %Timex.Parse.ParseError{message: "Expected" <> _v} ->
         render(
@@ -40,7 +42,7 @@ defmodule TeiserverWeb.ErrorView do
           })
         )
 
-      _ ->
+      _other ->
         render("500_internal.html", Map.merge(error, %{error: error}))
     end
   end

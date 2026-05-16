@@ -4,7 +4,7 @@
       <div class="card-header">
         <h3>
           <img
-            src={Routes.static_path(@conn, "/images/logo/logo_favicon.png")}
+            src={~p"/images/logo/logo_favicon.png"}
             height="42"
             style="margin-right: 5px;"
             class="d-inline align-top"
@@ -60,10 +60,7 @@
               <% end %>
 
               <div class="col-md-4">
-                <a
-                  href={Routes.account_session_path(@conn, :forgot_password)}
-                  class="btn btn-secondary btn-block"
-                >
+                <a href={~p"/forgot_password"} class="btn btn-secondary btn-block">
                   Forgotten password
                 </a>
               </div>

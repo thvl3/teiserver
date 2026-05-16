@@ -6,7 +6,7 @@ defmodule Teiserver.LobbyIdServer do
   use GenServer
 
   @spec start_lobby_id_server() :: :ok | {:failure, String.t()}
-  def start_lobby_id_server() do
+  def start_lobby_id_server do
     case get_server_pid() do
       nil ->
         {:ok, _coordinator_pid} =
@@ -17,13 +17,13 @@ defmodule Teiserver.LobbyIdServer do
 
         :ok
 
-      _ ->
+      _pid ->
         {:failure, "Already started"}
     end
   end
 
   @spec get_next_id() :: {:error, :no_pid} | non_neg_integer()
-  def get_next_id() do
+  def get_next_id do
     case get_server_pid() do
       nil -> {:error, :no_pid}
       pid -> GenServer.call(pid, :next_id)
@@ -39,18 +39,18 @@ defmodule Teiserver.LobbyIdServer do
   end
 
   @spec get_server_pid() :: pid() | nil
-  defp get_server_pid() do
+  defp get_server_pid do
     case Horde.Registry.lookup(Teiserver.ServerRegistry, "LobbyIdServer") do
-      [{pid, _}] ->
+      [{pid, _data}] ->
         pid
 
-      _ ->
+      _not_found ->
         nil
     end
   end
 
   @spec start_link(list()) :: :ignore | {:error, any} | {:ok, pid}
-  def start_link(_) do
+  def start_link(_opts) do
     GenServer.start_link(__MODULE__, [], [])
   end
 

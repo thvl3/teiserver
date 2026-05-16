@@ -1,14 +1,14 @@
 defmodule TeiserverWeb.Admin.GeneralControllerTest do
+  alias Teiserver.Helpers.GeneralTestLib
+  alias Teiserver.TeiserverTestLib
+
   use TeiserverWeb.ConnCase
 
-  alias Central.Helpers.GeneralTestLib
-
   setup do
-    GeneralTestLib.conn_setup(Teiserver.TeiserverTestLib.admin_permissions())
-    |> Teiserver.TeiserverTestLib.conn_setup()
+    GeneralTestLib.conn_setup(TeiserverTestLib.admin_permissions())
+    |> TeiserverTestLib.conn_setup()
   end
 
-  @tag :needs_attention
   test "index", %{conn: conn} do
     conn = get(conn, Routes.ts_admin_general_path(conn, :index))
 

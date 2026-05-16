@@ -14,7 +14,7 @@ defmodule Teiserver.Config.UserConfigTypes.ProfileConfigs do
     end
   end
 
-  @impl true
+  @impl Supervisor
   def init(:ok) do
     children = [
       {ConCache, [name: :config_user_type_store, ttl_check_interval: false]}
@@ -24,7 +24,7 @@ defmodule Teiserver.Config.UserConfigTypes.ProfileConfigs do
   end
 
   @spec create() :: :ok
-  def create() do
+  def create do
     add_user_config_type(%{
       key: "general.Colour scheme",
       section: "Interface",

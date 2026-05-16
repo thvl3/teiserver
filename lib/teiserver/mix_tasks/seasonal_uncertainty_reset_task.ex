@@ -7,6 +7,10 @@ defmodule Mix.Tasks.Teiserver.SeasonalUncertaintyResetTask do
   where 5 is the uncertainty target
   """
 
+  alias Ecto.Adapters.SQL
+  alias Ecto.Multi
+  alias Teiserver.Repo
+
   use Mix.Task
 
   require Logger
@@ -15,15 +19,15 @@ defmodule Mix.Tasks.Teiserver.SeasonalUncertaintyResetTask do
   def run(args) do
     Logger.info("Args: #{args}")
     default_uncertainty_target = "5"
-    {uncertainty_target, _} = Enum.at(args, 0, default_uncertainty_target) |> Float.parse()
+    {uncertainty_target, _rest} = Enum.at(args, 0, default_uncertainty_target) |> Float.parse()
 
     Application.ensure_all_started(:teiserver)
 
     start_time = System.system_time(:millisecond)
 
     sql_transaction_result =
-      Ecto.Multi.new()
-      |> Ecto.Multi.run(:create_temp_table, fn repo, _ ->
+      Multi.new()
+      |> Multi.run(:create_temp_table, fn repo, _changes ->
         query = """
         CREATE temp table temp_table as
         SELECT
@@ -47,9 +51,9 @@ defmodule Mix.Tasks.Teiserver.SeasonalUncertaintyResetTask do
         ) as a;
         """
 
-        Ecto.Adapters.SQL.query(repo, query, [uncertainty_target])
+        SQL.query(repo, query, [uncertainty_target])
       end)
-      |> Ecto.Multi.run(:add_logs, fn repo, _ ->
+      |> Multi.run(:add_logs, fn repo, _changes ->
         query = """
         INSERT INTO teiserver_game_rating_logs (inserted_at, rating_type_id, user_id, value)
         SELECT
@@ -69,9 +73,9 @@ defmodule Mix.Tasks.Teiserver.SeasonalUncertaintyResetTask do
         FROM temp_table;
         """
 
-        Ecto.Adapters.SQL.query(repo, query, [])
+        SQL.query(repo, query, [])
       end)
-      |> Ecto.Multi.run(:update_ratings, fn repo, _ ->
+      |> Multi.run(:update_ratings, fn repo, _changes ->
         query = """
         UPDATE teiserver_account_ratings tar
         SET
@@ -83,19 +87,19 @@ defmodule Mix.Tasks.Teiserver.SeasonalUncertaintyResetTask do
           and t.rating_type_id = tar.rating_type_id;
         """
 
-        Ecto.Adapters.SQL.query(repo, query, [])
+        SQL.query(repo, query, [])
       end)
-      |> Teiserver.Repo.transaction()
+      |> Repo.transaction()
 
-    # credo:disable-for-next-line Credo.Check.Readability.WithSingleClause
-    with {:ok, result} <- sql_transaction_result do
-      time_taken = System.system_time(:millisecond) - start_time
+    case sql_transaction_result do
+      {:ok, result} ->
+        time_taken = System.system_time(:millisecond) - start_time
 
-      Logger.info(
-        "SeasonalUncertaintyResetTask complete, took #{time_taken}ms. Updated #{result.update_ratings.num_rows} ratings."
-      )
-    else
-      _ ->
+        Logger.info(
+          "SeasonalUncertaintyResetTask complete, took #{time_taken}ms. Updated #{result.update_ratings.num_rows} ratings."
+        )
+
+      _error ->
         Logger.error("SeasonalUncertaintyResetTask failed.")
     end
   end

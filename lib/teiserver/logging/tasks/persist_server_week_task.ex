@@ -1,13 +1,15 @@
 defmodule Teiserver.Logging.Tasks.PersistServerWeekTask do
   @moduledoc false
-  use Oban.Worker, queue: :teiserver
+
   alias Teiserver.Logging
   alias Teiserver.Logging.ServerDayLogLib
+  alias Teiserver.Logging.Tasks.PersistServerWeekTask
+  use Oban.Worker, queue: :teiserver
   import Ecto.Query, warn: false
 
   @impl Oban.Worker
   @spec perform(any) :: :ok
-  def perform(_) do
+  def perform(_job) do
     log =
       case Logging.get_last_server_week_log() do
         nil ->
@@ -19,7 +21,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerWeekTask do
 
     if log != nil do
       %{}
-      |> Teiserver.Logging.Tasks.PersistServerWeekTask.new()
+      |> PersistServerWeekTask.new()
       |> Oban.insert()
     end
 
@@ -28,7 +30,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerWeekTask do
 
   # For when there are no existing logs
   # we need to ensure the earliest log is from last week, not this week
-  defp perform_first_time() do
+  defp perform_first_time do
     first_logs =
       Logging.list_server_day_logs(
         order: "Oldest first",
@@ -62,7 +64,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerWeekTask do
             |> Enum.zip(user_activity_logs)
             |> ServerDayLogLib.aggregate_day_logs()
 
-          {:ok, _} =
+          {:ok, _log} =
             Logging.create_server_week_log(%{
               year: log_year,
               week: log_week,
@@ -71,7 +73,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerWeekTask do
             })
         end
 
-      _ ->
+      _empty ->
         nil
     end
   end
@@ -105,7 +107,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerWeekTask do
         |> Enum.zip(user_activity_logs)
         |> ServerDayLogLib.aggregate_day_logs()
 
-      {:ok, _} =
+      {:ok, _log} =
         Logging.create_server_week_log(%{
           year: new_year,
           week: new_week,
@@ -118,7 +120,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerWeekTask do
   end
 
   @spec week_so_far() :: map()
-  def week_so_far() do
+  def week_so_far do
     now = Timex.now()
 
     user_activity_logs =

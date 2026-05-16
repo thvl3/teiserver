@@ -2,14 +2,23 @@ defmodule Teiserver.Lobby.LobbyRestrictions do
   @moduledoc """
   Helper methods for lobby policies
   """
-  alias Teiserver.{CacheUser, Config}
-  require Logger
-  alias Teiserver.Battle.{BalanceLib, MatchLib}
+
+  alias Teiserver.Account.Auth
   alias Teiserver.Battle
+  alias Teiserver.Battle.BalanceLib
+  alias Teiserver.Battle.MatchLib
+  alias Teiserver.Config
+  require Logger
 
   @rank_upper_bound 7
   @rating_upper_bound 1000
   @splitter "------------------------------------------------------"
+
+  @unranked_title_error "You cannot set a limit if the lobby is unranked."
+  @all_welcome_title_error "Games declaring all are welcome cannot have player restrictions."
+  @pro_title_error "You cannot set a maximum limit for lobby names referencing pros."
+  @noob_title_error "You cannot set a minimum limit for lobby names referencing new players."
+
   @spec rank_upper_bound() :: number
   def rank_upper_bound, do: @rank_upper_bound
   def rating_upper_bound, do: @rating_upper_bound
@@ -18,13 +27,11 @@ defmodule Teiserver.Lobby.LobbyRestrictions do
     play_level_bounds = get_rating_bounds_for_title(state)
     play_rank_bounds = get_rank_bounds_for_title(state)
 
-    cond do
-      play_level_bounds == nil && play_rank_bounds == nil ->
-        []
-
-      true ->
-        ["This lobby has the following play restrictions:", play_level_bounds, play_rank_bounds]
-        |> Enum.filter(fn x -> x != nil end)
+    if is_nil(play_level_bounds) && is_nil(play_rank_bounds) do
+      []
+    else
+      ["This lobby has the following play restrictions:", play_level_bounds, play_rank_bounds]
+      |> Enum.filter(fn x -> x != nil end)
     end
   end
 
@@ -134,8 +141,9 @@ defmodule Teiserver.Lobby.LobbyRestrictions do
   defp allow_bypass_rank_check?(user) do
     method = Config.get_site_config_cache("profile.Rank method")
     # When using Role method for ranks,
-    # contributors auto pass since their ranks are not defined on playtime. To be fixed seperately.
-    method == "Role" && CacheUser.is_contributor?(user)
+    # contributors auto pass since their ranks are not defined
+    # on playtime. To be fixed separately.
+    method == "Role" && Auth.contributor?(user)
   end
 
   @spec check_rank_to_play(any(), any()) :: :ok | {:error, iodata()}
@@ -212,10 +220,17 @@ defmodule Teiserver.Lobby.LobbyRestrictions do
   @spec check_lobby_name(String.t(), any()) ::
           {:error, String.t()} | {:ok, String.t()} | {:ok, nil}
   def check_lobby_name(name, consul_state) do
+    restrictions = restriction_types(consul_state)
+
     cond do
-      has_restrictions?(consul_state) and allwelcome_name?(name) ->
-        {:error,
-         "* You cannot declare a lobby to be all welcome if there are player restrictions"}
+      allwelcome_title?(name) and not Enum.empty?(restrictions) ->
+        {:error, @all_welcome_title_error}
+
+      pro_title?(name) and Enum.member?(restrictions, :max) ->
+        {:error, @pro_title_error}
+
+      noob_title?(name) and Enum.member?(restrictions, :min) ->
+        {:error, @noob_title_error}
 
       true ->
         {:ok, get_tips(name)}
@@ -227,12 +242,12 @@ defmodule Teiserver.Lobby.LobbyRestrictions do
 
     case length(tips) do
       0 -> nil
-      _ -> tips
+      _count -> tips
     end
   end
 
   defp get_noob_looby_tips(lobby_title) do
-    case is_noob_title?(lobby_title) do
+    case noob_title?(lobby_title) do
       true ->
         [
           @splitter,
@@ -250,7 +265,7 @@ defmodule Teiserver.Lobby.LobbyRestrictions do
   end
 
   defp get_rotato_tips(lobby_title) do
-    case is_rotato_title?(lobby_title) do
+    case rotato_title?(lobby_title) do
       true ->
         [
           # Temporary tips until this is part of Chobby UI
@@ -267,67 +282,129 @@ defmodule Teiserver.Lobby.LobbyRestrictions do
     end
   end
 
-  # Check if lobby has restrictions for playing
-  defp has_restrictions?(consul_state) do
+  # Return a list of the restriction types (min, max) defining
+  # play boundaries for the lobby
+  defp restriction_types(consul_state) do
     state = consul_state
 
-    cond do
-      state.maximum_rating_to_play < @rating_upper_bound -> true
-      state.minimum_rating_to_play > 0 -> true
-      state.minimum_rank_to_play > 0 -> true
-      state.maximum_rank_to_play < @rank_upper_bound -> true
-      true -> false
+    [
+      if(state.maximum_rating_to_play < @rating_upper_bound, do: :max),
+      if(state.minimum_rating_to_play > 0, do: :min),
+      if(state.minimum_rank_to_play > 0, do: :min),
+      if(state.maximum_rank_to_play < @rank_upper_bound, do: :max)
+    ]
+    |> Enum.reject(&is_nil(&1))
+    |> Enum.uniq()
+  end
+
+  @spec allowed_to_set_restrictions(map(), :max | :min | :any) :: :ok | {:error, String.t()}
+  def allowed_to_set_restrictions(state, :any) do
+    case allowed_to_set_restrictions(state, :max) do
+      :ok -> allowed_to_set_restrictions(state, :min)
+      result -> result
     end
   end
 
-  # Teifion added code to prevent setting restrictions to All Welcome lobbies
-  @spec allowed_to_set_restrictions(map()) :: :ok | {:error, String.t()}
-  def allowed_to_set_restrictions(state) do
+  def allowed_to_set_restrictions(state, :max) do
     name =
       (Battle.get_lobby(state.lobby_id) || %{})
       |> Map.get(:name)
 
     cond do
       not state.ranked and not Config.get_site_config_cache("lobby.Unranked lobby restrictions") ->
-        {:error, "You cannot set a limit if the lobby is unranked"}
+        {:error, @unranked_title_error}
 
-      allwelcome_name?(name) ->
-        {:error, "You cannot set a limit if all are welcome to the game"}
+      allwelcome_title?(name) ->
+        {:error, @all_welcome_title_error}
+
+      pro_title?(name) ->
+        {:error, @pro_title_error}
 
       true ->
         :ok
     end
   end
 
-  defp allwelcome_name?(nil), do: false
-
-  defp allwelcome_name?(name) do
+  def allowed_to_set_restrictions(state, :min) do
     name =
-      name
-      |> String.downcase()
-      |> String.replace(" ", "")
+      (Battle.get_lobby(state.lobby_id) || %{})
+      |> Map.get(:name)
 
     cond do
-      String.contains?(name, "allwelcome") -> true
-      true -> false
+      not state.ranked and not Config.get_site_config_cache("lobby.Unranked lobby restrictions") ->
+        {:error, @unranked_title_error}
+
+      allwelcome_title?(name) ->
+        {:error, @all_welcome_title_error}
+
+      noob_title?(name) ->
+        {:error, @noob_title_error}
+
+      true ->
+        :ok
     end
   end
 
-  @doc """
-  Checks if the lobby title indicates a noob lobby
-  """
-  @spec is_noob_title?(String.t()) :: boolean()
-  def is_noob_title?(title) do
-    anti_noob_regex = ~r/no (noob|newb|nub)/i
-    noob_regex = ~r/\b(noob|newb|nub(s|\b))/i
+  defp allwelcome_title?(nil), do: false
 
-    Regex.match?(noob_regex, title) && !Regex.match?(anti_noob_regex, title)
+  defp allwelcome_title?(title) do
+    title = leet_replace(title)
+
+    # Matches against all welcome and a couple of typo'd versions
+    Regex.match?(~r/all?\s?well?come/, title)
   end
 
-  @spec is_rotato_title?(String.t()) :: boolean()
-  def is_rotato_title?(title) do
+  @spec pro_title?(String.t()) :: boolean()
+  def pro_title?(title) do
+    title = leet_replace(title)
+    pattern = ~r/\b(pro|professional)\b/i
+
+    Regex.match?(pattern, title)
+  end
+
+  @doc """
+  Checks if the lobby title indicates a noob lobby, returns false if
+  no noob reference detected or a negation of a noob reference is
+  detected.
+  """
+  @spec noob_title?(String.t()) :: boolean()
+  def noob_title?(title) do
+    title = leet_replace(title)
+
+    # Attempts to match a negation and a reference to noobs
+    anti_noob_regex = ~r/(?:\b(no)\s)?(new\splayer|noobs?|newb|nub(?:z|s| ))/
+
+    case Regex.scan(anti_noob_regex, title) do
+      [[_full, _no_noob, ""]] ->
+        # Not matching on the noob part at all
+        false
+
+      [[_full, "", _noob_in_title]] ->
+        # This matches on the noob part but not the negative
+        true
+
+      [[_full, _no_noob, _noob_in_title]] ->
+        # Matching the negative
+        false
+
+      _no_valid_match ->
+        false
+    end
+  end
+
+  @spec rotato_title?(String.t()) :: boolean()
+  def rotato_title?(title) do
     regex = ~r/\b(rotat)/i
 
     Regex.match?(regex, title)
+  end
+
+  defp leet_replace(title) do
+    title
+    |> String.downcase()
+    |> String.replace("3", "e")
+    |> String.replace("0", "o")
+    |> String.replace("-", "")
+    |> String.replace("_", "")
   end
 end

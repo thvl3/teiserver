@@ -1,4 +1,7 @@
 defmodule TeiserverWeb.OAuth.CodeView do
+  alias Teiserver.OAuth
+  alias TeiserverWeb.Endpoint
+
   use TeiserverWeb, :view
 
   def token(%{token: token}) do
@@ -22,10 +25,10 @@ defmodule TeiserverWeb.OAuth.CodeView do
     Map.take(conn, [:error_description]) |> Map.put("error", error_code)
   end
 
-  def metadata(_) do
+  def metadata(_conn) do
     base =
-      Application.get_env(:teiserver, Teiserver.OAuth)[:issuer] ||
-        TeiserverWeb.Endpoint.static_url()
+      Application.get_env(:teiserver, OAuth)[:issuer] ||
+        Endpoint.static_url()
 
     %{
       issuer: base,

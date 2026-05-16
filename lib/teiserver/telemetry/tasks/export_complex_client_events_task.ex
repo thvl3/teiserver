@@ -1,8 +1,9 @@
 defmodule Teiserver.Telemetry.ExportComplexClientEventsTask do
   @moduledoc false
-  alias Teiserver.Telemetry.{ComplexClientEvent, ComplexAnonEvent}
-  alias Teiserver.Helper.{DatePresets}
+  alias Teiserver.Helper.DatePresets
   alias Teiserver.Repo
+  alias Teiserver.Telemetry.ComplexAnonEvent
+  alias Teiserver.Telemetry.ComplexClientEvent
   import Ecto.Query, warn: false
   import Teiserver.Helper.QueryHelpers
 
@@ -32,7 +33,7 @@ defmodule Teiserver.Telemetry.ExportComplexClientEventsTask do
     end
   end
 
-  def perform(_) do
+  def perform(_args) do
     %{}
   end
 

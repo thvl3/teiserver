@@ -1,7 +1,9 @@
 defmodule Teiserver.OAuth.CredentialQueries do
-  use TeiserverWeb, :queries
-  alias Teiserver.OAuth.{Credential, Application}
+  @moduledoc false
   alias Teiserver.Bot.Bot
+  alias Teiserver.OAuth.Application
+  alias Teiserver.OAuth.Credential
+  use TeiserverWeb, :queries
 
   def get_credential(nil), do: nil
 
@@ -53,7 +55,7 @@ defmodule Teiserver.OAuth.CredentialQueries do
     |> Enum.into(%{})
   end
 
-  def base_query() do
+  def base_query do
     from credential in Credential,
       as: :credential
   end

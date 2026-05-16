@@ -157,6 +157,11 @@ config :teiserver, Teiserver,
     battle_minimum_seconds: 120
   }
 
+config :nostrum,
+  youtubedl: false,
+  streamlink: false,
+  ffmpeg: false
+
 # config :grpc,
 #   start_server: true
 
@@ -252,9 +257,6 @@ config :teiserver, Oban,
        {"7 9 * * *", Teiserver.Logging.Tasks.PersistMatchMonthTask},
        {"8 9 * * *", Teiserver.Telemetry.InfologCleanupTask},
        {"9 9 * * *", Teiserver.Logging.Tasks.PersistUserActivityDayTask},
-
-       # 9:43
-       {"43 9 * * *", Teiserver.Game.AchievementCleanupTask},
 
        # 0302 and 1202 every day, gives time for multiple telemetry day tasks to run if needed
        {"2 3 * * *", Teiserver.Account.RecalculateUserDailyStatTask},

@@ -1,17 +1,20 @@
 defmodule TeiserverWeb.Moderation.ReportUser.IndexLiveTest do
   @moduledoc false
+
+  alias Teiserver.Helpers.GeneralTestLib
+  alias Teiserver.Moderation
+  alias Teiserver.TeiserverTestLib
+
   use TeiserverWeb.ConnCase, async: false
+
   import Phoenix.LiveViewTest
 
-  alias Central.Helpers.GeneralTestLib
-  alias Teiserver.{Moderation, TeiserverTestLib}
-
-  defp auth_setup(_) do
+  defp auth_setup(_context) do
     GeneralTestLib.conn_setup(TeiserverTestLib.player_permissions())
     |> TeiserverTestLib.conn_setup()
   end
 
-  defp anon_setup(_) do
+  defp anon_setup(_context) do
     GeneralTestLib.conn_setup([], [:no_login])
   end
 
@@ -39,8 +42,7 @@ defmodule TeiserverWeb.Moderation.ReportUser.IndexLiveTest do
       user = TeiserverTestLib.new_user()
 
       # Ensure no existing groups
-      assert Enum.empty?(Moderation.list_report_groups(where: [target_id: user.id]))
-      assert Enum.empty?(Moderation.list_reports(where: [target_id: user.id]))
+      assert Moderation.list_reports(where: [target_id: user.id]) |> Enum.empty?()
 
       {:ok, index_live, html} = live(conn, ~p"/moderation/report_user/#{user.id}")
 
@@ -94,9 +96,6 @@ defmodule TeiserverWeb.Moderation.ReportUser.IndexLiveTest do
       assert html =~ "Your report has been submitted"
 
       # Lets see if the report has come through!
-      [report_group] = Moderation.list_report_groups(where: [target_id: user.id])
-      assert report_group.report_count == 1
-
       [report] = Moderation.list_reports(where: [target_id: user.id])
       assert report.extra_text == "The extra text in my report"
       assert report.target_id == user.id

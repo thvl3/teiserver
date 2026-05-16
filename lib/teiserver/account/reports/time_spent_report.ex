@@ -1,14 +1,16 @@
 defmodule Teiserver.Account.TimeSpentReport do
+  @moduledoc false
   alias Teiserver.Helper.DatePresets
-  alias Teiserver.{Logging}
   alias Teiserver.Helper.TimexHelper
+  alias Teiserver.Logging
+
   import Teiserver.Helper.StringHelper, only: [get_hash_id: 1]
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-stopwatch"
+  def icon, do: "fa-solid fa-stopwatch"
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Admin"
+  def permissions, do: "Moderator"
 
   @spec run(Plug.Conn.t(), map()) :: {list(), map()}
   def run(_conn, params) do

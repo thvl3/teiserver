@@ -1,12 +1,17 @@
 defmodule Teiserver.SpringAuthTest do
+  alias Teiserver.Account
+  alias Teiserver.Account.Auth
+  alias Teiserver.Account.UserCacheLib
+  alias Teiserver.BitParse
+  alias Teiserver.CacheUser
+  alias Teiserver.Client
+  alias Teiserver.TeiserverTestLib
   use Teiserver.ServerCase, async: false
   require Logger
-  alias Teiserver.BitParse
-  alias Teiserver.{CacheUser, Account, Client}
-  alias Teiserver.Account.UserCacheLib
+
   import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
 
-  import Teiserver.TeiserverTestLib,
+  import TeiserverTestLib,
     only: [
       auth_setup: 1,
       auth_setup: 2,
@@ -67,13 +72,13 @@ defmodule Teiserver.SpringAuthTest do
     [1, 1, 0, 0, 1, 0, 0] = reply_bits
 
     # Lets check we can correctly in-game
-    new_status = Integer.undigits(Enum.reverse([0, 1, 0, 0, 0, 0, 0]), 2)
+    new_status = [0, 1, 0, 0, 0, 0, 0] |> Enum.reverse() |> Integer.undigits(2)
     _send_raw(socket, "MYSTATUS #{new_status}\n")
     reply = _recv_raw(socket)
     assert reply == "CLIENTSTATUS #{user.name} #{new_status}\n"
 
     # And now the away flag
-    new_status = Integer.undigits(Enum.reverse([0, 0, 0, 0, 0, 0, 0]), 2)
+    new_status = [0, 0, 0, 0, 0, 0, 0] |> Enum.reverse() |> Integer.undigits(2)
     _send_raw(socket, "MYSTATUS #{new_status}\n")
     reply = _recv_raw(socket)
     assert reply == "CLIENTSTATUS #{user.name} #{new_status}\n"
@@ -133,7 +138,6 @@ IGNORELISTEND\n"
     assert reply == "SAIDPRIVATE #{user2.name} What about now?\n"
   end
 
-  # credo:disable-for-next-line Credo.Check.Design.TagTODO
   # TODO: Make this work
   # test "SAYPRIVATE with special characters", %{socket: socket1, user: user} = context do
   #   user2 = new_user()
@@ -253,13 +257,12 @@ CLIENTS test_room #{user.name}\n"
     assert reply == :timeout
   end
 
-  @tag :needs_attention
   test "JOINBATTLE, SAYBATTLE, MYBATTLESTATUS, LEAVEBATTLE",
        %{socket: socket1, user: user1} = context do
     hash = "-1540855590"
 
     # Give user Bot role so they can manage battle
-    UserCacheLib.update_user(%{user1 | roles: ["Bot" | user1.roles]}, persist: false)
+    Auth.add_roles(user1.id, ["Bot"])
 
     _send_raw(
       socket1,
@@ -271,15 +274,15 @@ CLIENTS test_room #{user.name}\n"
     assert reply =~ "BATTLEOPENED "
     assert reply =~ "OPENBATTLE "
 
-    [_, lobby_id] = Regex.run(~r/OPENBATTLE ([0-9]+)\n/, reply)
+    [_full_match, lobby_id] = Regex.run(~r/OPENBATTLE ([0-9]+)\n/, reply)
     lobby_id = int_parse(lobby_id)
 
     user2 = new_user()
     %{socket: socket2} = auth_setup(context, user2)
-    _ = _recv_raw(socket1)
+    _adduser_reply = _recv_raw(socket1)
 
     _send_raw(socket2, "JOINBATTLE #{lobby_id} empty sPassword\n")
-    _ = _recv_raw(socket2)
+    _join_reply = _recv_raw(socket2)
 
     # User1 (host) should now get a message
     reply = _recv_raw(socket1)
@@ -290,10 +293,11 @@ CLIENTS test_room #{user.name}\n"
     reply = _recv_raw(socket2)
     assert reply == "JOINBATTLEFAILED Because I said so\n"
 
-    # Rejoin, this time accept, also this time use the SpringLobby method of an actually empty password
+    # Rejoin, this time accept, also this time use the
+    # SpringLobby method of an actually empty password
     _send_raw(socket2, "JOINBATTLE #{lobby_id}  sPassword\n")
     _send_raw(socket1, "JOINBATTLEACCEPT #{user2.name}\n")
-    _ = _recv_raw(socket1)
+    _accept_reply = _recv_raw(socket1)
 
     reply =
       _recv_until(socket2)
@@ -346,7 +350,10 @@ CLIENTS test_room #{user.name}\n"
     # Actually add it this time
     _send_raw(socket2, "ADDBOT STAI(1) 4195458 0 STAI\n")
     reply = _recv_raw(socket2)
-    [_, botid] = Regex.run(~r/ADDBOT (\d+) STAI\(1\) #{user2.name} 4195458 0 STAI/, reply)
+
+    [_full_match, botid] =
+      Regex.run(~r/ADDBOT (\d+) STAI\(1\) #{user2.name} 4195458 0 STAI/, reply)
+
     botid = int_parse(botid)
     assert reply == "ADDBOT #{botid} STAI(1) #{user2.name} 4195458 0 STAI\n"
 
@@ -354,7 +361,7 @@ CLIENTS test_room #{user.name}\n"
     _send_raw(socket2, "ADDBOT Raptor:Normal(1) 4195458 0 Raptor: Normal\n")
     reply = _recv_raw(socket2)
 
-    [_, botid] =
+    [_full_match, botid] =
       Regex.run(~r/ADDBOT (\d+) Raptor:Normal\(1\) #{user2.name} 4195458 0 Raptor: Normal/, reply)
 
     botid = int_parse(botid)
@@ -397,7 +404,7 @@ CLIENTS test_room #{user.name}\n"
     assert reply =~ "ADDUSER #{user2.name} ?? #{user2.id} LuaLobby Chobby\n"
 
     _send_raw(socket2, "RING #{user1.name}\n")
-    _ = _recv_raw(socket2)
+    _ring_reply = _recv_raw(socket2)
 
     reply = _recv_raw(socket1)
     assert reply == "RING #{user2.name}\n"
@@ -471,8 +478,8 @@ CLIENTS test_room #{user.name}\n"
 
     # No need to send an exit, it's already sorted out!
     # we should try to login though, it should be rejected as rename in progress
-    %{socket: socket} = Teiserver.TeiserverTestLib.raw_setup(context)
-    _ = _recv_raw(socket)
+    %{socket: socket} = TeiserverTestLib.raw_setup(context)
+    _welcome = _recv_raw(socket)
 
     # Now we get flood protection after the rename
     expected_server_response = "DENIED Flood protection - Please wait 20 seconds and try again"
@@ -496,7 +503,7 @@ CLIENTS test_room #{user.name}\n"
     # Un-flood them
     CacheUser.set_flood_level(userid, 0)
     # And re-verify them
-    user.id |> Teiserver.CacheUser.get_user_by_id() |> Teiserver.CacheUser.verify_user()
+    Account.verify_user(userid)
 
     # Now they can log in again
     _send_raw(
@@ -551,7 +558,7 @@ CLIENTS test_room #{user.name}\n"
   end
 
   test "CHANGEEMAIL to email already taken", %{socket: socket} do
-    other_user = Teiserver.TeiserverTestLib.new_user()
+    other_user = TeiserverTestLib.new_user()
 
     # Make the request
     _send_raw(socket, "CHANGEEMAILREQUEST #{other_user.email}\n")
@@ -565,7 +572,7 @@ CLIENTS test_room #{user.name}\n"
     assert reply == "SERVERMSG You do not have permission to execute that command\n"
 
     # Give mod access, recache the user
-    UserCacheLib.update_user(%{user | roles: ["Moderator" | user.roles]}, persist: false)
+    Auth.add_roles(user.id, ["Moderator"])
     :timer.sleep(100)
 
     _send_raw(socket, "CREATEBOTACCOUNT test_bot_account #{user.name}\n")
@@ -583,7 +590,10 @@ CLIENTS test_room #{user.name}\n"
   end
 
   # test "c.moderation.report", %{socket: socket, user: user} do
-  #   _send_raw(socket, "c.moderation.report_user bad_name_here location_type nil reason with spaces\n")
+  #   _send_raw(
+  #     socket,
+  #     "c.moderation.report_user bad_name_here location_type nil reason with spaces\n"
+  #   )
   #   reply = _recv_raw(socket)
   #   assert reply =~ "NO cmd=c.moderation.report_user\tbad command format\n"
 
@@ -591,10 +601,14 @@ CLIENTS test_room #{user.name}\n"
   #   reply = _recv_raw(socket)
   #   assert reply =~ "NO cmd=c.moderation.report_user\tbad command format\n"
 
-  #   _send_raw(socket, "c.moderation.report_user bad_name_here\tlocation_type\tnil\treason with spaces\n")
+  #   _send_raw(
+  #     socket,
+  #     "c.moderation.report_user bad_name_here\tlocation_type\tnil\treason with spaces\n"
+  #   )
   #   reply = _recv_raw(socket)
   #   assert reply =~ "NO cmd=c.moderation.report_user\tno target user\n"
-  #   assert reply =~ "OK\nSAIDPRIVATE Coordinator To complete your report, please use the form on this link:"
+  #   assert reply =~
+  #     "OK\nSAIDPRIVATE Coordinator To complete your report, please use the form on this link:"
 
   #   # Now we do it correctly, first without a location id
   #   target_user = new_user()
@@ -631,7 +645,7 @@ CLIENTS test_room #{user.name}\n"
     %{socket: socket} = auth_setup(context, user)
 
     # [in_game, away, r3, r2, r1, mod, bot]
-    new_status = Integer.undigits(Enum.reverse([0, 1, 0, 0, 0, 0, 0]), 2)
+    new_status = [0, 1, 0, 0, 0, 0, 0] |> Enum.reverse() |> Integer.undigits(2)
     _send_raw(socket, "MYSTATUS #{new_status}\n")
     reply = _recv_raw(socket)
     assert reply == "CLIENTSTATUS #{user.name} #{new_status}\n"
@@ -644,15 +658,16 @@ CLIENTS test_room #{user.name}\n"
         "test_user_bad_id@email.com",
         Account.spring_md5_password("password")
       )
-      |> Teiserver.Account.create_user()
+      |> Account.create_user()
 
     bad_user
     |> UserCacheLib.convert_user()
     |> UserCacheLib.add_user()
-    |> CacheUser.verify_user()
+
+    Account.verify_user(bad_user.id)
 
     # Need to add it as a client for the :add_user command to work
-    Client.login(CacheUser.get_user_by_id(bad_user.id), :spring, "127.0.0.1")
+    bad_user.id |> CacheUser.get_user_by_id() |> Client.login(:spring, "127.0.0.1")
 
     # Now see what happens when we add user
     pid = Client.get_client_by_id(user.id).tcp_pid
@@ -676,7 +691,7 @@ CLIENTS test_room #{user.name}\n"
     reply = _recv_raw(socket)
     assert reply == :timeout
 
-    UserCacheLib.update_user(%{user | roles: ["Moderator" | user.roles]}, persist: false)
+    Auth.add_roles(user.id, ["Moderator"])
     :timer.sleep(500)
     _recv_until(socket)
 
@@ -695,7 +710,7 @@ CLIENTS test_room #{user.name}\n"
     reply = _recv_raw(socket)
     assert reply == :timeout
 
-    UserCacheLib.update_user(%{user | roles: ["Moderator" | user.roles]}, persist: false)
+    Auth.add_roles(user.id, ["Moderator"])
     :timer.sleep(500)
     _recv_until(socket)
 

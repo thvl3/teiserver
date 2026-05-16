@@ -2,11 +2,16 @@ defmodule Teiserver.Moderation.RefreshUserRestrictionsTask do
   @moduledoc """
   Refreshes the restrictions applied to a user based on the outstanding actions.
   """
-  use Oban.Worker, queue: :teiserver
-  require Logger
-  alias Teiserver.Data.Types, as: T
 
-  alias Teiserver.{Account, Coordinator, Moderation}
+  alias Teiserver.Account
+  alias Teiserver.Client
+  alias Teiserver.Coordinator
+  alias Teiserver.Data.Types, as: T
+  alias Teiserver.Moderation
+
+  use Oban.Worker, queue: :teiserver
+
+  require Logger
 
   @impl Oban.Worker
   @spec perform(any) :: :ok
@@ -44,10 +49,12 @@ defmodule Teiserver.Moderation.RefreshUserRestrictionsTask do
         limit: :infinity
       )
 
+    user = Account.get_user(user_id)
+
     if Enum.empty?(actions) do
       Logger.info("Lifted remaining restrictions for user##{user_id}")
 
-      Account.update_cache_user(user_id, %{
+      Account.script_update_user(user, %{
         restrictions: [],
         restricted_until: nil
       })
@@ -72,7 +79,7 @@ defmodule Teiserver.Moderation.RefreshUserRestrictionsTask do
 
       expires_as_string = new_restricted_until |> Jason.encode!() |> Jason.decode!()
 
-      Account.update_cache_user(user_id, %{
+      Account.script_update_user(user, %{
         restrictions: new_restrictions,
         restricted_until: expires_as_string
       })
@@ -99,7 +106,7 @@ defmodule Teiserver.Moderation.RefreshUserRestrictionsTask do
     cond do
       Enum.member?(new_restrictions, "Login") ->
         Coordinator.send_to_host(client.lobby_id, "!gkick #{client.name}")
-        Teiserver.Client.disconnect(client.userid, "Banned")
+        Client.disconnect(client.userid, "Banned")
 
       Enum.member?(new_restrictions, "All lobbies") ->
         Coordinator.send_to_host(client.lobby_id, "!bkick #{client.name}")

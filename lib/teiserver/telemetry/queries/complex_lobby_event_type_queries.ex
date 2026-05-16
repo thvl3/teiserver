@@ -1,7 +1,8 @@
 defmodule Teiserver.Telemetry.ComplexLobbyEventTypeQueries do
   @moduledoc false
-  use TeiserverWeb, :queries
+
   alias Teiserver.Telemetry.ComplexLobbyEventType
+  use TeiserverWeb, :queries
 
   # Queries
   @spec query_complex_lobby_event_types(list) :: Ecto.Query.t()
@@ -27,8 +28,8 @@ defmodule Teiserver.Telemetry.ComplexLobbyEventTypeQueries do
   end
 
   @spec _where(Ecto.Query.t(), atom(), any()) :: Ecto.Query.t()
-  defp _where(query, _, ""), do: query
-  defp _where(query, _, nil), do: query
+  defp _where(query, _key, ""), do: query
+  defp _where(query, _key, nil), do: query
 
   defp _where(query, :id, id) do
     from complex_lobby_event_types in query,

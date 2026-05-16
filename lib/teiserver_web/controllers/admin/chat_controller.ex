@@ -1,10 +1,13 @@
 defmodule TeiserverWeb.Admin.ChatController do
+  alias Teiserver.Chat
+  alias Teiserver.Coordinator
+
   use TeiserverWeb, :controller
 
-  alias Teiserver.{Coordinator, Chat}
   import Teiserver.Helper.StringHelper, only: [get_hash_id: 1]
 
   plug Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Chat.LobbyMessage,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}
@@ -24,7 +27,7 @@ defmodule TeiserverWeb.Admin.ChatController do
         "24 hours" -> Timex.now() |> Timex.shift(hours: -24)
         "2 days" -> Timex.now() |> Timex.shift(days: -2)
         "7 days" -> Timex.now() |> Timex.shift(days: -7)
-        _ -> nil
+        _other -> nil
       end
 
     user_id = get_hash_id(params["account_user"])

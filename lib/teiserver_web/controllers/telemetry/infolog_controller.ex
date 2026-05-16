@@ -1,6 +1,6 @@
 defmodule TeiserverWeb.Telemetry.InfologController do
-  use TeiserverWeb, :controller
   alias Teiserver.Telemetry
+  use TeiserverWeb, :controller
 
   plug(AssignPlug,
     site_menu_active: "telemetry",
@@ -8,6 +8,7 @@ defmodule TeiserverWeb.Telemetry.InfologController do
   )
 
   plug Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Telemetry.Infolog,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}
@@ -74,7 +75,7 @@ defmodule TeiserverWeb.Telemetry.InfologController do
   def delete(conn, %{"id" => id}) do
     infolog = Telemetry.get_infolog(id)
 
-    {:ok, _clan} = Telemetry.delete_infolog(infolog)
+    {:ok, _infolog} = Telemetry.delete_infolog(infolog)
 
     conn
     |> put_flash(:info, "Infolog deleted successfully.")

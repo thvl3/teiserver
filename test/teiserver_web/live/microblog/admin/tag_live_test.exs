@@ -1,27 +1,31 @@
 defmodule TeiserverWeb.TagLiveTest do
   @moduledoc false
+
+  alias Teiserver.Helpers.GeneralTestLib
+  alias Teiserver.Microblog
+  alias Teiserver.TeiserverTestLib
+
   use TeiserverWeb.ConnCase
 
   import Phoenix.LiveViewTest
   import Teiserver.MicroblogFixtures
-  alias Teiserver.Microblog
 
   @create_attrs %{colour: "#AA0000", icon: "some icon", name: "some name"}
   @update_attrs %{colour: "#0000AA", icon: "some updated icon", name: "some updated name"}
   @invalid_attrs %{colour: nil, icon: nil, name: nil}
 
-  defp auth_setup(_) do
-    Teiserver.TeiserverTestLib.server_permissions()
-    |> Central.Helpers.GeneralTestLib.conn_setup()
-    |> Teiserver.TeiserverTestLib.conn_setup()
+  defp auth_setup(_context) do
+    TeiserverTestLib.server_permissions()
+    |> GeneralTestLib.conn_setup()
+    |> TeiserverTestLib.conn_setup()
   end
 
-  defp unauth_setup(_) do
-    Central.Helpers.GeneralTestLib.conn_setup()
-    |> Teiserver.TeiserverTestLib.conn_setup()
+  defp unauth_setup(_context) do
+    GeneralTestLib.conn_setup()
+    |> TeiserverTestLib.conn_setup()
   end
 
-  defp create_tag(_) do
+  defp create_tag(_context) do
     tag = tag_fixture()
     %{tag: tag}
   end

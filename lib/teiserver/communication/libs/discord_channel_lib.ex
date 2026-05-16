@@ -1,9 +1,12 @@
 defmodule Teiserver.Communication.DiscordChannelLib do
   @moduledoc false
-  use TeiserverWeb, :library_newform
+
+  alias Nostrum.Api.User, as: NostrumUser
   alias Teiserver.Account
-  alias Teiserver.Communication.{DiscordChannel, DiscordChannelQueries}
+  alias Teiserver.Communication.DiscordChannel
+  alias Teiserver.Communication.DiscordChannelQueries
   alias Teiserver.Data.Types, as: T
+  use TeiserverWeb, :library_newform
 
   @spec special_channels() :: [String.t()]
   def special_channels do
@@ -85,7 +88,11 @@ defmodule Teiserver.Communication.DiscordChannelLib do
   end
 
   def get_discord_channel(discord_channel_name) do
-    Teiserver.cache_get(:discord_channel_cache, discord_channel_name)
+    if use_discord?() do
+      Teiserver.cache_get(:discord_channel_cache, discord_channel_name)
+    else
+      nil
+    end
   end
 
   @doc """
@@ -173,7 +180,7 @@ defmodule Teiserver.Communication.DiscordChannelLib do
   defp cache_channel(channel), do: channel
 
   @spec pre_cache_discord_channels() :: :ok
-  def pre_cache_discord_channels() do
+  def pre_cache_discord_channels do
     list_discord_channels()
     |> Enum.each(&cache_channel/1)
   end
@@ -220,7 +227,7 @@ defmodule Teiserver.Communication.DiscordChannelLib do
   end
 
   @spec edit_discord_message(non_neg_integer | String.t(), non_neg_integer, String.t()) ::
-          map | nil | {:error, String.t()}
+          map | nil | {:error, any()}
   def edit_discord_message(maybe_channel_id, message_id, new_message)
       when is_integer(message_id) do
     if use_discord?() do
@@ -237,7 +244,7 @@ defmodule Teiserver.Communication.DiscordChannelLib do
   end
 
   @spec delete_discord_message(non_neg_integer | String.t(), non_neg_integer) ::
-          map | nil | {:error, String.t()}
+          map | nil | {:error, any()}
   def delete_discord_message(maybe_channel_id, message_id) do
     if use_discord?() do
       case get_channel_id_from_any(maybe_channel_id) do
@@ -249,7 +256,7 @@ defmodule Teiserver.Communication.DiscordChannelLib do
     end
   end
 
-  @spec send_discord_dm(T.userid(), String.t()) :: map | nil | {:error, String.t()}
+  @spec send_discord_dm(T.userid(), String.t()) :: map | nil | {:error, any()}
   def send_discord_dm(userid, message) do
     if use_discord?() do
       user = Account.get_user_by_id(userid)
@@ -262,12 +269,12 @@ defmodule Teiserver.Communication.DiscordChannelLib do
           new_discord_message(user.discord_dm_channel_id, message)
 
         user.discord_id != nil ->
-          case Nostrum.Api.User.create_dm(user.discord_id) do
+          case NostrumUser.create_dm(user.discord_id) do
             {:ok, %{id: channel_id}} ->
               Account.update_cache_user(user.id, %{discord_dm_channel_id: channel_id})
               new_discord_message(channel_id, message)
 
-            _ ->
+            _error ->
               {:error, "Unable to created DM channel"}
           end
 
@@ -278,7 +285,7 @@ defmodule Teiserver.Communication.DiscordChannelLib do
   end
 
   @spec create_discord_reaction(non_neg_integer | String.t(), non_neg_integer, String.t()) ::
-          map | nil | {:error, String.t()}
+          map | nil | {:error, any()}
   def create_discord_reaction(maybe_channel_id, message_id, emoji) do
     if use_discord?() do
       case get_channel_id_from_any(maybe_channel_id) do
@@ -291,7 +298,7 @@ defmodule Teiserver.Communication.DiscordChannelLib do
   end
 
   @spec delete_discord_reaction(non_neg_integer | String.t(), non_neg_integer, String.t()) ::
-          map | nil | {:error, String.t()}
+          map | nil | {:error, any()}
   def delete_discord_reaction(maybe_channel_id, message_id, emoji) do
     if use_discord?() do
       case get_channel_id_from_any(maybe_channel_id) do
@@ -325,12 +332,12 @@ defmodule Teiserver.Communication.DiscordChannelLib do
   end
 
   @spec use_discord?() :: boolean
-  def use_discord?() do
+  def use_discord? do
     Application.get_env(:teiserver, Teiserver)[:enable_discord_bridge]
   end
 
   @spec get_guild_id() :: integer | nil
-  def get_guild_id() do
+  def get_guild_id do
     Application.get_env(:teiserver, Teiserver.Bridge.DiscordBridgeBot)[:guild_id]
   end
 end

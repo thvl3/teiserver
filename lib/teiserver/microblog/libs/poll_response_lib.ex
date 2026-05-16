@@ -1,8 +1,10 @@
 defmodule Teiserver.Microblog.PollResponseLib do
   @moduledoc false
-  use TeiserverWeb, :library_newform
-  alias Teiserver.Microblog.{PollResponse, PollResponseQueries}
+
   alias Teiserver.Helpers.PubSubHelper
+  alias Teiserver.Microblog.PollResponse
+  alias Teiserver.Microblog.PollResponseQueries
+  use TeiserverWeb, :library_newform
 
   @doc """
   Returns the list of poll_responses.

@@ -1,15 +1,18 @@
 defmodule Teiserver.Account.OpenSkillReport do
-  require Logger
-
+  @moduledoc false
+  alias Ecto.Adapters.SQL
   alias Teiserver.Game.MatchRatingLib
   alias Teiserver.Repo
+
+  require Logger
+
   import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-chart-line"
+  def icon, do: "fa-solid fa-chart-line"
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Admin"
+  def permissions, do: "Moderator"
 
   @spec run(Plug.Conn.t(), map()) :: {nil, map()}
   def run(_conn, params) do
@@ -57,7 +60,7 @@ defmodule Teiserver.Account.OpenSkillReport do
       #{metric_column_name}_rounded
     """
 
-    case Ecto.Adapters.SQL.query(Repo, query, [rating_type_id, last_active, uncertainty]) do
+    case SQL.query(Repo, query, [rating_type_id, last_active, uncertainty]) do
       {:ok, results} ->
         [results.columns | results.rows]
 

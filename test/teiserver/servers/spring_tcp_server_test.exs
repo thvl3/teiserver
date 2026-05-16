@@ -1,11 +1,20 @@
 defmodule Teiserver.SpringTcpServerTest do
+  alias Ecto.Adapters.SQL
+  alias Teiserver.Account
+  alias Teiserver.Account.UserCacheLib
+  alias Teiserver.Client
+  alias Teiserver.Coordinator
+  alias Teiserver.Protocols.SpringOut
+  alias Teiserver.Room
+  alias Teiserver.TeiserverTestLib
+
   use Teiserver.ServerCase, async: false
 
   require Logger
 
   import Mock
 
-  import Teiserver.TeiserverTestLib,
+  import TeiserverTestLib,
     only: [
       raw_setup: 1,
       _send_raw: 2,
@@ -16,13 +25,10 @@ defmodule Teiserver.SpringTcpServerTest do
       start_spring_server: 1
     ]
 
-  alias Teiserver.Account.UserCacheLib
-  alias Teiserver.{Account, Client, Room, TeiserverTestLib}
-
   setup :start_spring_server
 
   setup(context) do
-    Teiserver.TeiserverTestLib.start_coordinator!()
+    TeiserverTestLib.start_coordinator!()
 
     %{socket: socket} = raw_setup(context)
     {:ok, socket: socket}
@@ -56,8 +62,8 @@ defmodule Teiserver.SpringTcpServerTest do
 
     user = UserCacheLib.get_user_by_name(username)
     query = "UPDATE account_users SET inserted_at = '2020-01-01 01:01:01' WHERE id = #{user.id}"
-    Ecto.Adapters.SQL.query(Repo, query, [])
-    Teiserver.Account.UserCacheLib.recache_user(user.id)
+    SQL.query(Repo, query, [])
+    UserCacheLib.recache_user(user.id)
 
     _send_raw(
       socket,
@@ -65,10 +71,10 @@ defmodule Teiserver.SpringTcpServerTest do
     )
 
     reply = _recv_until(socket)
-    [agreement_full, agreement_empty, agreement_end | _] = String.split(reply, "\n")
+    [agreement_full, agreement_empty, agreement_end | _rest] = String.split(reply, "\n")
 
     assert agreement_full ==
-             "AGREEMENT A verification code has been sent to your email address. Please read our terms of service at https://beyondallreason.info/privacy_policy and the code of conduct at https://www.beyondallreason.info/code-of-conduct. Then enter your six digit code below if you agree to the terms."
+             "AGREEMENT A verification code has been sent to your email address. Please read our terms of service at https://www.beyondallreason.info/privacy and the code of conduct at https://www.beyondallreason.info/code-of-conduct. Then enter your six digit code below if you agree to the terms."
 
     assert agreement_empty == "AGREEMENT "
     assert agreement_end == "AGREEMENTEND"
@@ -109,7 +115,7 @@ defmodule Teiserver.SpringTcpServerTest do
     # And send something very long
     msg =
       1..1800
-      |> Enum.map_join("", fn _ -> "x" end)
+      |> Enum.map_join("", fn _i -> "x" end)
 
     # This is long enough it should trigger a splitting
     _send_raw(socket, "SAY mpchan #{msg}\n")
@@ -117,7 +123,7 @@ defmodule Teiserver.SpringTcpServerTest do
     assert reply =~ "SAID mpchan #{username} xxxxxxx"
 
     _send_raw(socket, "EXIT\n")
-    _ = _recv_raw(socket)
+    _reply = _recv_raw(socket)
     {:error, :closed} = :gen_tcp.recv(socket, 0, 1000)
   end
 
@@ -140,13 +146,14 @@ defmodule Teiserver.SpringTcpServerTest do
     end
   end
 
-  # NOTE: All needs_attention tests in this module fail because of the coordinator state being shared between tests
+  # NOTE: All needs_attention tests in this module fail because of
+  # the coordinator state being shared between tests
   @tag :needs_attention
   test "bad sequences", context do
     %{socket: socket, user: user} = auth_setup(context)
     client = Client.get_client_by_name(user.name)
     tcp_pid = client.tcp_pid
-    coordinator_userid = Teiserver.Coordinator.get_coordinator_userid()
+    coordinator_userid = Coordinator.get_coordinator_userid()
 
     # Should be no users but ourselves
     :timer.sleep(300)
@@ -182,8 +189,8 @@ defmodule Teiserver.SpringTcpServerTest do
            }
 
     # Flush the message queues
-    _ = _recv_raw(socket)
-    _ = _recv_raw(s1)
+    _reply1 = _recv_raw(socket)
+    _reply2 = _recv_raw(s1)
     # _ = _recv_raw(s2)
     # _ = _recv_raw(s3)
 
@@ -300,7 +307,7 @@ defmodule Teiserver.SpringTcpServerTest do
            }
 
     assert r == "CLIENTSTATUS #{u1.name} 0\nJOINEDBATTLE #{lobby_id + 1} #{u1.name}\n"
-    # credo:disable-for-next-line Credo.Check.Design.TagTODO
+
     # TODO: Find out why the below doesn't happen
     # assert r == "LEFTBATTLE #{lobby_id} #{u1.name}\nJOINEDBATTLE #{lobby_id + 1} #{u1.name}\n"
 
@@ -333,7 +340,6 @@ defmodule Teiserver.SpringTcpServerTest do
     :timer.sleep(500)
     r = _recv_raw(socket)
 
-    # credo:disable-for-next-line Credo.Check.Design.TagTODO
     # TODO: Sometimes this fails for no apparent reason, unable to reproduce since the above
     # 500 sleep call but I seem to recall that previously not helping
     expected =
@@ -363,8 +369,8 @@ defmodule Teiserver.SpringTcpServerTest do
     _send_raw(s1, "EXIT\n")
     # _send_raw(s2, "EXIT\n")
     # _send_raw(s3, "EXIT\n")
-    _ = _recv_raw(socket)
-    _ = _recv_raw(s1)
+    _reply1 = _recv_raw(socket)
+    _reply2 = _recv_raw(s1)
     # _ = _recv_raw(s2)
     # _ = _recv_raw(s3)
   end
@@ -376,6 +382,7 @@ defmodule Teiserver.SpringTcpServerTest do
   @tag :needs_attention
   test "dud users mode", context do
     # Here we're testing if the user isn't even known
+    # user1 = new_user()
     non_user = new_user()
     %{user: dud} = auth_setup(context)
     %{socket: socket, user: user} = auth_setup(context)
@@ -472,7 +479,8 @@ defmodule Teiserver.SpringTcpServerTest do
     assert r ==
              "ADDUSER #{dud.name} ?? #{dud.id} LuaLobby Chobby\nCLIENTSTATUS #{dud.name} 0\nSAIDEX roomname #{dud.name} msgmsg\n"
 
-    # Now the non-user, should get a whole new adding of a user, even though that user isn't logged in
+    # Now the non-user, should get a whole new adding of a user,
+    # even though that user isn't logged in
     send(tcp_pid, {:direct_message, non_user.id, "msgmsg"})
     r = _recv_until(socket)
 
@@ -498,8 +506,8 @@ defmodule Teiserver.SpringTcpServerTest do
     state = :sys.get_state(tcp_pid)
     _recv_until(socket)
 
-    # Join a room when we don't know about dud_user
-    Teiserver.Protocols.SpringOut.do_join_room(state, "dud_room")
+    # Join a room when we don't know about user1
+    SpringOut.do_join_room(state, "dud_room")
     r = _recv_until(socket)
 
     assert r ==

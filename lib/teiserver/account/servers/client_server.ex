@@ -1,11 +1,12 @@
 defmodule Teiserver.Account.ClientServer do
   @moduledoc false
+
+  alias Phoenix.PubSub
+  alias Teiserver.Lobby.ChatLib
   use GenServer
   require Logger
-  alias Teiserver.Lobby.ChatLib
-  alias Phoenix.PubSub
 
-  @impl true
+  @impl GenServer
   def handle_call(:get_client_state, _from, state) do
     {:reply, state.client, state}
   end
@@ -81,7 +82,7 @@ defmodule Teiserver.Account.ClientServer do
     {:reply, :ok, %{state | client: new_client}}
   end
 
-  @impl true
+  @impl GenServer
   def handle_cast({:update_values, partial_client}, state) do
     new_client = Map.merge(state.client, partial_client)
 
@@ -201,7 +202,7 @@ defmodule Teiserver.Account.ClientServer do
     {:noreply, %{state | client: new_client}}
   end
 
-  @impl true
+  @impl GenServer
   def handle_info(:heartbeat, %{client: client_state} = state) do
     cond do
       client_state.tcp_pid == nil ->
@@ -222,7 +223,7 @@ defmodule Teiserver.Account.ClientServer do
     GenServer.start_link(__MODULE__, opts[:data], [])
   end
 
-  @impl true
+  @impl GenServer
   @spec init(map()) :: {:ok, map()}
   def init(%{client: %{userid: userid}} = state) do
     Logger.metadata(request_id: "ClientServer##{userid}")

@@ -1,6 +1,7 @@
 defmodule TeiserverWeb.API.Admin.UserController do
+  alias Teiserver.Account
+  alias Teiserver.OAuth
   use TeiserverWeb, :controller
-  alias Teiserver.{Account, OAuth}
 
   plug Teiserver.OAuth.Plug.EnsureAuthenticated, scopes: ["admin.user"]
 
@@ -55,7 +56,7 @@ defmodule TeiserverWeb.API.Admin.UserController do
   defp update_user_stats(user_id, params) do
     stat_fields = Map.take(params, @stat_fields)
 
-    with {:ok, _} <- update_stats_if_needed(user_id, stat_fields) do
+    with {:ok, _stats} <- update_stats_if_needed(user_id, stat_fields) do
       :ok
     end
   end
@@ -68,21 +69,17 @@ defmodule TeiserverWeb.API.Admin.UserController do
     end
   end
 
-  defp get_generic_lobby_app() do
-    # credo:disable-for-next-line Credo.Check.Readability.WithSingleClause
-    with app when not is_nil(app) <- OAuth.get_application_by_uid("generic_lobby") do
-      {:ok, app}
-    else
+  defp get_generic_lobby_app do
+    case OAuth.get_application_by_uid("generic_lobby") do
       nil -> {:error, :app_not_found}
+      app -> {:ok, app}
     end
   end
 
   defp get_user_by_email(email) do
-    # credo:disable-for-next-line Credo.Check.Readability.WithSingleClause
-    with user when not is_nil(user) <- Account.get_user_by_email(email) do
-      {:ok, user}
-    else
+    case Account.get_user_by_email(email) do
       nil -> {:error, :user_not_found}
+      user -> {:ok, user}
     end
   end
 
@@ -131,7 +128,7 @@ defmodule TeiserverWeb.API.Admin.UserController do
   defp format_changeset_errors(changeset) do
     changeset.errors
     # credo:disable-for-lines:2 Credo.Check.Refactor.MapJoin
-    |> Enum.map(fn {field, {message, _}} -> "#{field}: #{message}" end)
+    |> Enum.map(fn {field, {message, _opts}} -> "#{field}: #{message}" end)
     |> Enum.join(", ")
   end
 end

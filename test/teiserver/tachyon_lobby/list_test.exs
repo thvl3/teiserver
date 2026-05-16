@@ -1,7 +1,7 @@
 defmodule Teiserver.TachyonLobby.ListTest do
+  alias Teiserver.TachyonLobby, as: Lobby
   use Teiserver.DataCase
   import Teiserver.Support.Polling, only: [poll_until: 2]
-  alias Teiserver.TachyonLobby, as: Lobby
 
   @moduletag :tachyon
 
@@ -24,7 +24,7 @@ defmodule Teiserver.TachyonLobby.ListTest do
       end)
 
     poll_until(&Lobby.list/0, &(map_size(&1) == 1))
-    assert %{"lobby-id" => _} = Lobby.list()
+    assert %{"lobby-id" => _overview} = Lobby.list()
     Process.exit(pid, :kill)
     poll_until(&Lobby.list/0, &(map_size(&1) == 0))
   end
@@ -58,10 +58,10 @@ defmodule Teiserver.TachyonLobby.ListTest do
   end
 
   test "get updates when player joins or leaves teams" do
-    {sink_pid, id, _} = mk_lobby()
+    {sink_pid, id, _pid} = mk_lobby()
 
-    assert {_initial_counter, %{^id => _}} = Lobby.subscribe_updates()
-    {:ok, _, _} = Lobby.join(id, %{id: "user2", name: "name-user2"}, sink_pid)
+    assert {_initial_counter, %{^id => _overview}} = Lobby.subscribe_updates()
+    {:ok, _lobby_pid, _details} = Lobby.join(id, %{id: "user2", name: "name-user2"}, sink_pid)
     {:ok, _details} = Lobby.join_ally_team(id, "user2", 1)
     Lobby.List.broadcast_updates()
     assert_receive %{event: :update_lobbies, changes: %{^id => %{player_count: 2}}}
@@ -71,26 +71,35 @@ defmodule Teiserver.TachyonLobby.ListTest do
     assert_receive %{event: :update_lobbies, changes: %{^id => %{player_count: 1}}}
   end
 
-  test "batch updates" do
-    {sink_pid, id, _} = mk_lobby([3, 3])
+  test "player count update when becoming spectator" do
+    {_sink_pid, id, _pid} = mk_lobby()
 
-    assert {_initial_counter, %{^id => _}} = Lobby.subscribe_updates()
-    {:ok, _, _} = Lobby.join(id, %{id: "user2", name: "name-user2"}, sink_pid)
+    assert {_initial_counter, %{^id => _overview}} = Lobby.subscribe_updates()
+    :ok = Lobby.spectate(id, "1234")
+    Lobby.List.broadcast_updates()
+    assert_receive %{event: :update_lobbies, changes: %{^id => %{player_count: 0}}}
+  end
+
+  test "batch updates" do
+    {sink_pid, id, _pid} = mk_lobby([3, 3])
+
+    assert {_initial_counter, %{^id => _overview}} = Lobby.subscribe_updates()
+    {:ok, _lobby_pid1, _details1} = Lobby.join(id, %{id: "user2", name: "name-user2"}, sink_pid)
     {:ok, _details} = Lobby.join_ally_team(id, "user2", 1)
-    {:ok, _, _} = Lobby.join(id, %{id: "user3", name: "name-user3"}, sink_pid)
+    {:ok, _lobby_pid2, _details2} = Lobby.join(id, %{id: "user3", name: "name-user3"}, sink_pid)
     {:ok, _details} = Lobby.join_ally_team(id, "user3", 1)
     Lobby.List.broadcast_updates()
     assert_receive %{event: :update_lobbies, changes: %{^id => %{player_count: 3}}}
   end
 
   test "batch updates across lobbies" do
-    {sink_pid, id1, _} = mk_lobby()
-    {_, id2, _} = mk_lobby()
-    assert {_initial_counter, _} = Lobby.subscribe_updates()
+    {sink_pid, id1, _pid1} = mk_lobby()
+    {_sink_pid2, id2, _pid2} = mk_lobby()
+    assert {_initial_counter, _lobbies} = Lobby.subscribe_updates()
 
-    {:ok, _, _} = Lobby.join(id1, %{id: "user2", name: "name-user2"}, sink_pid)
+    {:ok, _lobby_pid1, _details1} = Lobby.join(id1, %{id: "user2", name: "name-user2"}, sink_pid)
     {:ok, _details} = Lobby.join_ally_team(id1, "user2", 1)
-    {:ok, _, _} = Lobby.join(id2, %{id: "user3", name: "name-user3"}, sink_pid)
+    {:ok, _lobby_pid2, _details2} = Lobby.join(id2, %{id: "user3", name: "name-user3"}, sink_pid)
     {:ok, _details} = Lobby.join_ally_team(id2, "user3", 1)
 
     Lobby.List.broadcast_updates()
@@ -102,27 +111,27 @@ defmodule Teiserver.TachyonLobby.ListTest do
   end
 
   test "don't send updates if no changes" do
-    {_initial_counter, _} = Lobby.subscribe_updates()
+    {_initial_counter, _lobbies} = Lobby.subscribe_updates()
     Lobby.List.broadcast_updates()
     refute_receive %{event: :update_lobbies}, 100
   end
 
   test "get updates when spec becomes player with join queue" do
-    {sink_pid, id, _} = mk_lobby()
+    {sink_pid, id, _pid} = mk_lobby()
 
-    assert {_initial_counter, %{^id => _}} = Lobby.subscribe_updates()
-    {:ok, _, _} = Lobby.join(id, %{id: "user2", name: "name-user2"}, sink_pid)
+    assert {_initial_counter, %{^id => _overview}} = Lobby.subscribe_updates()
+    {:ok, _lobby_pid, _details} = Lobby.join(id, %{id: "user2", name: "name-user2"}, sink_pid)
     :ok = Lobby.join_queue(id, "user2")
     Lobby.List.broadcast_updates()
     assert_receive %{event: :update_lobbies, changes: %{^id => %{player_count: 2}}}
   end
 
   test "bots are not counted in player count" do
-    {sink_pid, id, _} = mk_lobby()
+    {sink_pid, id, _pid} = mk_lobby()
 
-    assert {_initial_counter, %{^id => _}} = Lobby.subscribe_updates()
+    assert {_initial_counter, %{^id => _overview}} = Lobby.subscribe_updates()
     {:ok, _bot_id1} = Lobby.add_bot(id, "1234", 1, "bot")
-    {:ok, _, _} = Lobby.join(id, %{id: "user2", name: "name-user2"}, sink_pid)
+    {:ok, _lobby_pid, _details} = Lobby.join(id, %{id: "user2", name: "name-user2"}, sink_pid)
     {:ok, _details} = Lobby.join_ally_team(id, "user2", 1)
     Lobby.List.broadcast_updates()
 
@@ -130,10 +139,10 @@ defmodule Teiserver.TachyonLobby.ListTest do
   end
 
   test "get updates when player dies" do
-    {sink_pid, id, _} = mk_lobby()
+    {sink_pid, id, _pid} = mk_lobby()
 
-    assert {_initial_counter, %{^id => _}} = Lobby.subscribe_updates()
-    {:ok, _, _} = Lobby.join(id, %{id: "user2", name: "name-user2"}, sink_pid)
+    assert {_initial_counter, %{^id => _overview}} = Lobby.subscribe_updates()
+    {:ok, _lobby_pid, _details} = Lobby.join(id, %{id: "user2", name: "name-user2"}, sink_pid)
     {:ok, _details} = Lobby.join_ally_team(id, "user2", 1)
     Lobby.List.broadcast_updates()
     assert_receive %{event: :update_lobbies, changes: %{^id => %{player_count: 2}}}
@@ -144,9 +153,9 @@ defmodule Teiserver.TachyonLobby.ListTest do
   end
 
   test "remove update when last player leaves" do
-    {_sink_pid, id, _} = mk_lobby()
+    {_sink_pid, id, _pid} = mk_lobby()
 
-    assert {_initial_counter, %{^id => _}} = Lobby.subscribe_updates()
+    assert {_initial_counter, %{^id => _overview}} = Lobby.subscribe_updates()
 
     :ok = Lobby.leave(id, "1234")
     assert_receive %{lobby_id: ^id, event: :remove_lobby}
@@ -160,12 +169,12 @@ defmodule Teiserver.TachyonLobby.ListTest do
         {:ok, sink_pid} = Task.start_link(:timer, :sleep, [:infinity])
         player_id = to_string(i)
         player = %{id: player_id, name: "name-#{player_id}"}
-        {:ok, _, _details} = Lobby.join(id, player, sink_pid)
+        {:ok, _lobby_pid, _details} = Lobby.join(id, player, sink_pid)
         {to_string(i), Map.put(player, :pid, sink_pid)}
       end)
       |> Map.new()
 
-    for _ <- 2..5, do: assert_receive({:lobby, ^id, {:updated, _}})
+    for _i <- 2..5, do: assert_receive({:lobby, ^id, {:updated, _changes}})
 
     # fill the lobby with bots
     {:ok, _bot_id1} = Lobby.add_bot(id, "2", 0, "bot")
@@ -176,7 +185,7 @@ defmodule Teiserver.TachyonLobby.ListTest do
     :ok = Lobby.join_queue(id, "3")
     :ok = Lobby.join_queue(id, "4")
 
-    for _ <- 1..5, do: assert_receive({:lobby, ^id, {:updated, _}})
+    for _i <- 1..5, do: assert_receive({:lobby, ^id, {:updated, _changes}})
 
     assert {_initial_counter, %{^id => %{player_count: 1}}} = Lobby.subscribe_updates()
 
@@ -228,7 +237,7 @@ defmodule Teiserver.TachyonLobby.ListTest do
 
   describe "lobby updates" do
     test "name" do
-      {_, id, _} = mk_lobby()
+      {_sink_pid, id, _pid} = mk_lobby()
       assert {_initial_counter, %{}} = Lobby.subscribe_updates()
       Lobby.update_properties(id, "1234", %{name: "new name"})
       Lobby.List.broadcast_updates()
@@ -236,15 +245,22 @@ defmodule Teiserver.TachyonLobby.ListTest do
     end
 
     test "map name" do
-      {_, id, _} = mk_lobby()
+      {_sink_pid, id, _pid} = mk_lobby()
       assert {_initial_counter, %{}} = Lobby.subscribe_updates()
       Lobby.update_properties(id, "1234", %{map_name: "new map"})
       Lobby.List.broadcast_updates()
       assert_receive %{event: :update_lobbies, changes: %{^id => %{map_name: "new map"}}}
     end
 
+    test "boss enabled?" do
+      assert {_initial_counter, %{}} = Lobby.subscribe_updates()
+      {_sink_pid, _id, _pid} = mk_lobby()
+      Lobby.List.broadcast_updates()
+      assert_receive %{event: :add_lobby, overview: %{boss_enabled?: false}}
+    end
+
     test "expand ally team config" do
-      {_, id, _} = mk_lobby([1, 1])
+      {_sink_pid, id, _pid} = mk_lobby([1, 1])
       assert {_initial_counter, %{}} = Lobby.subscribe_updates()
       config = mk_start_params([2, 2]).ally_team_config
       Lobby.update_properties(id, "1234", %{ally_team_config: config})
@@ -257,10 +273,10 @@ defmodule Teiserver.TachyonLobby.ListTest do
     end
 
     test "ally team config change triggers player count change" do
-      {sink_pid, id, _} = mk_lobby([1, 1])
+      {sink_pid, id, _pid} = mk_lobby([1, 1])
       assert {_initial_counter, %{}} = Lobby.subscribe_updates()
-      {:ok, _, _} = Lobby.join(id, %{id: "user2", name: "name-user2"}, sink_pid)
-      {:ok, _details} = Lobby.join_ally_team(id, "user2", 1)
+      {:ok, _lobby_pid, _details} = Lobby.join(id, %{id: "user2", name: "name-user2"}, sink_pid)
+      {:ok, _join_details} = Lobby.join_ally_team(id, "user2", 1)
       Lobby.List.broadcast_updates()
       assert_receive %{event: :update_lobbies, changes: %{^id => %{player_count: 2}}}
 
@@ -271,14 +287,15 @@ defmodule Teiserver.TachyonLobby.ListTest do
     end
   end
 
-  defp overview_fixture() do
+  defp overview_fixture do
     %{
       name: "lobby name",
       player_count: 1,
       max_player_count: 2,
       map_name: "new map",
       engine_version: "engine123",
-      game_version: "game123"
+      game_version: "game123",
+      boss_enabled?: false
     }
   end
 
@@ -292,7 +309,7 @@ defmodule Teiserver.TachyonLobby.ListTest do
       engine_version: "fake engine version",
       ally_team_config:
         Enum.map(teams, fn max_team ->
-          x = for _ <- 1..max_team, do: %{max_players: 1}
+          x = for _i <- 1..max_team, do: %{max_players: 1}
 
           %{
             max_teams: max_team,

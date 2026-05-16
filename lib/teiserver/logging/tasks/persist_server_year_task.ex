@@ -1,13 +1,15 @@
 defmodule Teiserver.Logging.Tasks.PersistServerYearTask do
   @moduledoc false
-  use Oban.Worker, queue: :teiserver
+
   alias Teiserver.Logging
   alias Teiserver.Logging.ServerDayLogLib
+  alias Teiserver.Logging.Tasks.PersistServerYearTask
+  use Oban.Worker, queue: :teiserver
   import Ecto.Query, warn: false
 
   @impl Oban.Worker
   @spec perform(any) :: :ok
-  def perform(_) do
+  def perform(_job) do
     log =
       case Logging.get_last_server_year_log() do
         nil ->
@@ -19,7 +21,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerYearTask do
 
     if log != nil do
       %{}
-      |> Teiserver.Logging.Tasks.PersistServerYearTask.new()
+      |> PersistServerYearTask.new()
       |> Oban.insert()
     end
 
@@ -28,7 +30,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerYearTask do
 
   # For when there are no existing logs
   # we need to ensure the earliest log is from last year, not this year
-  defp perform_first_time() do
+  defp perform_first_time do
     first_logs =
       Logging.list_server_day_logs(
         order: "Oldest first",
@@ -63,7 +65,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerYearTask do
             |> Enum.zip(user_activity_logs)
             |> ServerDayLogLib.aggregate_day_logs()
 
-          {:ok, _} =
+          {:ok, _log} =
             Logging.create_server_year_log(%{
               year: log_year,
               date: Timex.beginning_of_year(log.date),
@@ -71,7 +73,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerYearTask do
             })
         end
 
-      _ ->
+      _empty ->
         nil
     end
   end
@@ -106,7 +108,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerYearTask do
         |> Enum.zip(user_activity_logs)
         |> ServerDayLogLib.aggregate_day_logs()
 
-      {:ok, _} =
+      {:ok, _log} =
         Logging.create_server_year_log(%{
           year: new_date.year,
           date: new_date,
@@ -118,7 +120,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerYearTask do
   end
 
   @spec year_so_far() :: map()
-  def year_so_far() do
+  def year_so_far do
     now = Timex.now()
 
     user_activity_logs =

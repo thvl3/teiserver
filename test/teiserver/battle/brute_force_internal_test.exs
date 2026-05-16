@@ -3,9 +3,12 @@ defmodule Teiserver.Battle.BruteForceInternalTest do
   Can run all balance tests via
   mix test --only balance_test
   """
-  use Teiserver.DataCase, async: true
-  @moduletag :balance_test
+
   alias Teiserver.Battle.Balance.BruteForce
+
+  use Teiserver.DataCase, async: true
+
+  @moduletag :balance_test
 
   test "check for broken party" do
     party = ["kyutoryu", "fbots1998"]
@@ -31,13 +34,13 @@ defmodule Teiserver.Battle.BruteForceInternalTest do
       %{name: "HungDaddy", rating: 2.8}
     ]
 
-    result = BruteForce.is_party_broken?(first_team, party)
+    result = BruteForce.party_broken?(first_team, party)
     refute result
 
-    result = BruteForce.is_party_broken?(second_team, party)
+    result = BruteForce.party_broken?(second_team, party)
     assert result
 
-    result = BruteForce.is_party_broken?(third_team, party)
+    result = BruteForce.party_broken?(third_team, party)
     refute result
   end
 
@@ -89,7 +92,7 @@ defmodule Teiserver.Battle.BruteForceInternalTest do
       ]
     }
 
-    combos = BruteForce.potential_teams(length(input.players))
+    combos = input.players |> length() |> BruteForce.potential_teams()
     assert length(combos) == 462
     first_combo = combos |> Enum.at(0)
     assert first_combo == [0, 1, 2, 3, 4, 5]

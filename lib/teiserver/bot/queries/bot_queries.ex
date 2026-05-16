@@ -1,6 +1,7 @@
 defmodule Teiserver.BotQueries do
-  use TeiserverWeb, :queries
+  @moduledoc false
   alias Teiserver.Bot.Bot
+  use TeiserverWeb, :queries
 
   @doc """
   Returns all bots.
@@ -8,7 +9,7 @@ defmodule Teiserver.BotQueries do
   but for now this will do.
   """
   @spec list_bots() :: [Bot.t()]
-  def list_bots() do
+  def list_bots do
     base_query() |> Repo.all()
   end
 
@@ -19,7 +20,7 @@ defmodule Teiserver.BotQueries do
     base_query() |> where_id(id) |> Repo.one()
   end
 
-  def base_query() do
+  def base_query do
     from bot in Bot, as: :bot
   end
 

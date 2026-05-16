@@ -1,4 +1,5 @@
 defmodule Teiserver.Account.Party do
+  @moduledoc false
   @enforce_keys [:id, :leader, :members, :pending_invites]
   defstruct [
     :id,
@@ -9,11 +10,13 @@ defmodule Teiserver.Account.Party do
 end
 
 defmodule Teiserver.Account.PartyLib do
-  # alias Phoenix.PubSub
-  alias Teiserver.{Account, Chat, CacheUser}
-  alias Teiserver.Account.Party
-  alias Teiserver.Data.Types, as: T
+  @moduledoc false
+  alias ExULID.ULID
   alias Phoenix.PubSub
+  alias Teiserver.Account
+  alias Teiserver.Account.Party
+  alias Teiserver.Chat
+  alias Teiserver.Data.Types, as: T
 
   @spec colours() :: atom
   def colours, do: :primary2
@@ -44,18 +47,18 @@ defmodule Teiserver.Account.PartyLib do
   @spec party_exists?(T.party_id()) :: boolean()
   def party_exists?(party_id) do
     case Horde.Registry.lookup(Teiserver.PartyRegistry, party_id) do
-      [{_pid, _}] -> true
-      _ -> false
+      [{_pid, _value}] -> true
+      _other -> false
     end
   end
 
   @spec list_party_ids() :: [T.party_id()]
-  def list_party_ids() do
+  def list_party_ids do
     Horde.Registry.select(Teiserver.PartyRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
   end
 
   @spec list_parties() :: [T.party()]
-  def list_parties() do
+  def list_parties do
     list_party_ids()
     |> list_parties()
   end
@@ -72,7 +75,7 @@ defmodule Teiserver.Account.PartyLib do
 
   def create_party(leader_id) do
     party = %Party{
-      id: ExULID.ULID.generate(),
+      id: ULID.generate(),
       leader: leader_id,
       members: [leader_id],
       pending_invites: []
@@ -143,8 +146,8 @@ defmodule Teiserver.Account.PartyLib do
   @spec get_party_pid(T.party_id()) :: pid() | nil
   def get_party_pid(party_id) do
     case Horde.Registry.lookup(Teiserver.PartyRegistry, party_id) do
-      [{pid, _}] -> pid
-      _ -> nil
+      [{pid, _value}] -> pid
+      _other -> nil
     end
   end
 
@@ -168,7 +171,7 @@ defmodule Teiserver.Account.PartyLib do
 
           # If the process has somehow died, we just return nil
         catch
-          :exit, _ ->
+          :exit, _reason ->
             nil
         end
     end
@@ -185,15 +188,10 @@ defmodule Teiserver.Account.PartyLib do
   @spec do_say(T.userid(), T.party_id(), String.t()) :: :ok | nil
   defp do_say(userid, party_id, msg) do
     msg = trim_message(msg)
-    user = Account.get_user_by_id(userid)
 
-    allowed =
-      cond do
-        CacheUser.is_restricted?(user, ["All chat"]) -> false
-        true -> true
-      end
-
-    if allowed do
+    if Account.restricted?(userid, ["All chat"]) do
+      nil
+    else
       persist_message(userid, msg, party_id)
 
       PubSub.broadcast(
@@ -209,8 +207,6 @@ defmodule Teiserver.Account.PartyLib do
       )
 
       :ok
-    else
-      nil
     end
   end
 

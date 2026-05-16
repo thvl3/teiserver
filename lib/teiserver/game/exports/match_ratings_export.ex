@@ -15,19 +15,22 @@ defmodule Teiserver.Game.MatchRatingsExport do
     "start_date" => "2023-06-02"
   })
   """
-  alias Teiserver.Helper.{DatePresets, TimexHelper}
-  alias Teiserver.{Battle, Repo}
+  alias Ecto.Adapters.SQL
+  alias Teiserver.Battle
   alias Teiserver.Game.MatchRatingLib
+  alias Teiserver.Helper.DatePresets
+  alias Teiserver.Helper.TimexHelper
+  alias Teiserver.Repo
   require Logger
 
   @id_chunk_size 10_000
   @game_chunk_size 100
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-explosion"
+  def icon, do: "fa-solid fa-explosion"
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Admin"
+  def permissions, do: "Admin"
 
   @spec show_form(Plug.Conn.t()) :: map()
   def show_form(_conn) do
@@ -105,7 +108,7 @@ defmodule Teiserver.Game.MatchRatingsExport do
     """
 
     match_count =
-      case Ecto.Adapters.SQL.query(Repo, query, [start_date, end_date, rating_type_id]) do
+      case SQL.query(Repo, query, [start_date, end_date, rating_type_id]) do
         {:ok, results} ->
           results.rows |> List.flatten() |> hd()
 
@@ -139,7 +142,7 @@ defmodule Teiserver.Game.MatchRatingsExport do
       LIMIT $5
     """
 
-    case Ecto.Adapters.SQL.query(Repo, query, [
+    case SQL.query(Repo, query, [
            start_date,
            end_date,
            rating_type_id,
@@ -164,11 +167,8 @@ defmodule Teiserver.Game.MatchRatingsExport do
       select:
         ~w(id map uuid server_uuid team_count team_size winning_team game_duration game_type started)a
     )
-    |> Stream.filter(fn match ->
-      cond do
-        Enum.empty?(match.ratings) -> false
-        true -> true
-      end
+    |> Stream.reject(fn match ->
+      Enum.empty?(match.ratings)
     end)
     |> Stream.map(fn match ->
       members_lookup =
@@ -206,10 +206,10 @@ defmodule Teiserver.Game.MatchRatingsExport do
   defp expand_members(rating_list) do
     rating_list
     |> Enum.map(fn
-      {nil, _} ->
+      {nil, _member} ->
         nil
 
-      {_, nil} ->
+      {_rating_log, nil} ->
         nil
 
       {rating_log, member} ->

@@ -1,16 +1,19 @@
 defmodule Teiserver.Logging.Tasks.PersistUserActivityDayTask do
   @moduledoc false
-  use Oban.Worker, queue: :teiserver
-  alias Teiserver.{Logging}
 
+  alias Teiserver.Logging
+  alias Teiserver.Logging.Tasks.PersistUserActivityDayTask
   alias Teiserver.Repo
+
+  use Oban.Worker, queue: :teiserver
+
   import Ecto.Query, warn: false
 
   @client_states ~w(lobby menu player spectator total)a
 
   @impl Oban.Worker
   @spec perform(any) :: :ok
-  def perform(_) do
+  def perform(_job) do
     last_date = Logging.get_last_user_activity_day_log()
 
     date =
@@ -29,7 +32,7 @@ defmodule Teiserver.Logging.Tasks.PersistUserActivityDayTask do
 
       if Timex.compare(new_date, Timex.today()) == -1 do
         %{}
-        |> Teiserver.Logging.Tasks.PersistUserActivityDayTask.new()
+        |> PersistUserActivityDayTask.new()
         |> Oban.insert()
       end
     end
@@ -51,7 +54,7 @@ defmodule Teiserver.Logging.Tasks.PersistUserActivityDayTask do
 
     Repo.delete_all(delete_query)
 
-    {:ok, _} =
+    {:ok, _log} =
       Logging.create_user_activity_day_log(%{
         date: date,
         data: data
@@ -80,36 +83,33 @@ defmodule Teiserver.Logging.Tasks.PersistUserActivityDayTask do
       @client_states
       |> Map.new(fn key -> {key, []} end)
 
-    result =
-      logs
-      |> Enum.reduce(start_data, fn log, acc ->
-        %{
-          total: log["client"]["total"] ++ acc.total,
-          player: log["client"]["player"] ++ acc.player,
-          spectator: log["client"]["spectator"] ++ acc.spectator,
-          lobby: log["client"]["lobby"] ++ acc.lobby,
-          menu: log["client"]["menu"] ++ acc.menu
-        }
-      end)
-      |> Map.new(fn {key, userids} ->
-        result =
-          userids
-          |> List.flatten()
-          |> Enum.group_by(
-            fn key ->
-              key
-            end,
-            fn _ ->
-              1
-            end
-          )
-          |> Map.new(fn {key, ones} ->
-            {key, Enum.count(ones)}
-          end)
+    logs
+    |> Enum.reduce(start_data, fn log, acc ->
+      %{
+        total: log["client"]["total"] ++ acc.total,
+        player: log["client"]["player"] ++ acc.player,
+        spectator: log["client"]["spectator"] ++ acc.spectator,
+        lobby: log["client"]["lobby"] ++ acc.lobby,
+        menu: log["client"]["menu"] ++ acc.menu
+      }
+    end)
+    |> Map.new(fn {key, userids} ->
+      result =
+        userids
+        |> List.flatten()
+        |> Enum.group_by(
+          fn key ->
+            key
+          end,
+          fn _value ->
+            1
+          end
+        )
+        |> Map.new(fn {key, ones} ->
+          {key, Enum.count(ones)}
+        end)
 
-        {key, result}
-      end)
-
-    result
+      {key, result}
+    end)
   end
 end

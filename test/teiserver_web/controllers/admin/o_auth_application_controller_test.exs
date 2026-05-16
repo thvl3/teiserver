@@ -1,12 +1,14 @@
 defmodule TeiserverWeb.Admin.OAuthApplicationControllerTest do
-  use TeiserverWeb.ConnCase
-
+  alias Teiserver.Helpers.GeneralTestLib
   alias Teiserver.OAuth
   alias Teiserver.OAuth.Application
+  alias Teiserver.TeiserverTestLib
+
+  use TeiserverWeb.ConnCase
 
   defp setup_user(_context) do
-    Central.Helpers.GeneralTestLib.conn_setup(Teiserver.TeiserverTestLib.admin_permissions())
-    |> Teiserver.TeiserverTestLib.conn_setup()
+    GeneralTestLib.conn_setup(TeiserverTestLib.admin_permissions())
+    |> TeiserverTestLib.conn_setup()
   end
 
   defp setup_app(context) do
@@ -32,7 +34,7 @@ defmodule TeiserverWeb.Admin.OAuthApplicationControllerTest do
 
     test "with some applications", %{conn: conn, user: user} do
       Enum.each(1..5, fn i ->
-        {:ok, _} =
+        {:ok, _app} =
           OAuth.create_application(%{
             name: "generic name #{i}",
             uid: "generic_name_#{i}",

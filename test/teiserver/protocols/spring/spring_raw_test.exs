@@ -1,4 +1,6 @@
 defmodule Teiserver.SpringRawTest do
+  alias Teiserver.Account
+  alias Teiserver.Account.UserCacheLib
   use Teiserver.ServerCase, async: false
 
   import Teiserver.TeiserverTestLib,
@@ -11,9 +13,6 @@ defmodule Teiserver.SpringRawTest do
       start_spring_server: 1
     ]
 
-  alias Teiserver.Account.UserCacheLib
-  alias Teiserver.Account
-
   setup :start_spring_server
 
   setup(context) do
@@ -22,14 +21,14 @@ defmodule Teiserver.SpringRawTest do
   end
 
   test "ping", %{socket: socket} do
-    _ = _recv_raw(socket)
+    _welcome = _recv_raw(socket)
     _send_raw(socket, "#4 PING\n")
     reply = _recv_raw(socket)
     assert reply =~ "#4 PONG\n"
   end
 
   test "REGISTER", %{socket: socket} do
-    _ = _recv_raw(socket)
+    _welcome = _recv_raw(socket)
     existing = new_user()
     name = "TestUser_raw_reg"
     password = Account.spring_md5_password("password")
@@ -82,10 +81,10 @@ defmodule Teiserver.SpringRawTest do
     assert reply == "TASSERVER 0.38-33-ga5f3b28 * 8201 0\n"
 
     _send_raw(socket, "REGISTER #{username} #{password} #{username}@email.e\n")
-    _ = _recv_raw(socket)
+    _reply = _recv_raw(socket)
     user = UserCacheLib.get_user_by_name(username)
     assert user != nil
-    Teiserver.CacheUser.verify_user(user)
+    Account.verify_user(user.id)
 
     # First try to login with a bad-case username
     _send_raw(
@@ -134,14 +133,14 @@ defmodule Teiserver.SpringRawTest do
            message: "Got: #{inspect(commands)}"
 
     _send_raw(socket, "EXIT\n")
-    _ = _recv_raw(socket)
+    _reply = _recv_raw(socket)
 
     # Is it actually killed?
     {:error, :closed} = :gen_tcp.recv(socket, 0, 1000)
   end
 
   test "RESETPASSWORDREQUEST", %{socket: socket} do
-    _ = _recv_raw(socket)
+    _welcome = _recv_raw(socket)
 
     # Send the wrong request
     _send_raw(

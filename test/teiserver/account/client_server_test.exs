@@ -1,9 +1,8 @@
 defmodule Teiserver.Account.ClientServerTest do
-  use Teiserver.DataCase, async: true
-  alias Teiserver.Client
   alias Teiserver.Account.ClientLib
+  alias Teiserver.Client
+  use Teiserver.DataCase, async: true
 
-  @tag :needs_attention
   test "server test" do
     client = %{
       userid: 1,
@@ -36,6 +35,7 @@ defmodule Teiserver.Account.ClientServerTest do
     # crappy way to ensure the genserver is registered by the time
     # call_client is called.
     :timer.sleep(5)
+
     # Call it!
     c = ClientLib.call_client(userid, :get_client_state)
     assert c.userid == userid
@@ -55,11 +55,7 @@ defmodule Teiserver.Account.ClientServerTest do
     assert r == nil
 
     # Update client
-    ClientLib.replace_update_client(Map.put(client, :side, 1), :client_updated_battlestatus)
-
-    # No server
-    # r = ClientLib.update_client(Map.merge(client, %{side: 1, userid: -1}), :client_updated_battlestatus)
-    # assert r == nil
+    client |> Map.put(:side, 1) |> ClientLib.replace_update_client(:client_updated_battlestatus)
 
     Client.disconnect(userid)
     ClientLib.stop_client_server(userid)

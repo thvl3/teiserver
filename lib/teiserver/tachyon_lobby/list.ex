@@ -12,11 +12,11 @@ defmodule Teiserver.TachyonLobby.List do
   distribute the load across the partitions.
   """
 
-  use GenServer
-
-  alias Teiserver.Helpers.PubSubHelper
   alias Teiserver.Helpers.MonitorCollection, as: MC
+  alias Teiserver.Helpers.PubSubHelper
   alias Teiserver.TachyonLobby.Lobby
+
+  use GenServer
 
   @update_topic "teiserver_tachyonlobby_list"
 
@@ -27,6 +27,7 @@ defmodule Teiserver.TachyonLobby.List do
           map_name: String.t(),
           engine_version: String.t(),
           game_version: String.t(),
+          boss_enabled?: boolean(),
           current_battle: nil | %{started_at: DateTime.t()}
         }
 
@@ -54,8 +55,8 @@ defmodule Teiserver.TachyonLobby.List do
   # one potential optimisation would be to store the list of lobbies in an
   # ets table that can be directly read from other processes
   @spec list() :: %{Lobby.id() => overview()}
-  def list() do
-    {_, list} = GenServer.call(__MODULE__, :list)
+  def list do
+    {_counter, list} = GenServer.call(__MODULE__, :list)
     list
   end
 
@@ -74,14 +75,14 @@ defmodule Teiserver.TachyonLobby.List do
   """
   # similar comment regarding potential perf issue sending large messages
   @spec subscribe_updates() :: {non_neg_integer(), %{Lobby.id() => overview()}}
-  def subscribe_updates() do
+  def subscribe_updates do
     PubSubHelper.subscribe(@update_topic)
     GenServer.call(__MODULE__, :list)
   catch
-    :exit, {:noproc, _} -> {0, %{}}
+    :exit, {:noproc, _details} -> {0, %{}}
   end
 
-  def unsubscribe_updates() do
+  def unsubscribe_updates do
     PubSubHelper.unsubscribe(@update_topic)
   end
 
@@ -91,13 +92,13 @@ defmodule Teiserver.TachyonLobby.List do
   end
 
   @spec start_link(term()) :: GenServer.on_start()
-  def start_link(_) do
+  def start_link(_arg) do
     GenServer.start_link(__MODULE__, nil, name: __MODULE__)
   end
 
-  @impl true
+  @impl GenServer
   @spec init(term()) :: {:ok, state(), {:continue, term()}}
-  def init(_) do
+  def init(_arg) do
     :timer.send_interval(5_000, :broadcast_updates)
     state = %{monitors: MC.new(), counter: 0, lobbies: %{}, changes: %{}}
     {:ok, state, {:continue, :bootstrap_state}}
@@ -106,9 +107,9 @@ defmodule Teiserver.TachyonLobby.List do
   @doc """
   used in tests to force the update instead of waiting for the timer
   """
-  def broadcast_updates(), do: Process.whereis(__MODULE__) |> send(:broadcast_updates)
+  def broadcast_updates, do: Process.whereis(__MODULE__) |> send(:broadcast_updates)
 
-  @impl true
+  @impl GenServer
   def handle_continue(:bootstrap_state, state) do
     {monitors, lobbies} =
       Teiserver.TachyonLobby.Registry.list_lobbies()
@@ -123,7 +124,7 @@ defmodule Teiserver.TachyonLobby.List do
       )
       |> Stream.filter(fn
         {:ok, x} when not is_nil(x) -> true
-        _ -> false
+        _other -> false
       end)
       |> Enum.reduce(
         {state.monitors, state.lobbies},
@@ -143,12 +144,12 @@ defmodule Teiserver.TachyonLobby.List do
     {:noreply, %{state | monitors: monitors, counter: counter, lobbies: lobbies}}
   end
 
-  @impl true
+  @impl GenServer
   def handle_call(:list, _from, state) do
     {:reply, {state.counter, state.lobbies}, state}
   end
 
-  @impl true
+  @impl GenServer
   def handle_cast({:register, {lobby_pid, lobby_id, overview}}, state) do
     state =
       put_in(state, [:lobbies, lobby_id], overview)
@@ -177,7 +178,7 @@ defmodule Teiserver.TachyonLobby.List do
     {:noreply, state}
   end
 
-  @impl true
+  @impl GenServer
   def handle_info({:DOWN, ref, :process, _obj, _reason}, state) do
     lobby_id = MC.get_val(state.monitors, ref)
 

@@ -3,8 +3,10 @@ defmodule Teiserver.MetadataCache do
   Cache and setup for miscellaneous metadata
   """
 
-  use Supervisor
   alias Teiserver.Helpers.CacheHelper
+  alias Teiserver.Logging.AuditLogLib
+
+  use Supervisor
 
   def start_link(opts) do
     with {:ok, sup} <- Supervisor.start_link(__MODULE__, :ok, opts),
@@ -14,7 +16,7 @@ defmodule Teiserver.MetadataCache do
     end
   end
 
-  @impl true
+  @impl Supervisor
   def init(:ok) do
     children = [
       CacheHelper.concache_perm_sup(:application_metadata_cache)
@@ -23,8 +25,7 @@ defmodule Teiserver.MetadataCache do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  defp random_names() do
-    # Brought over from Central
+  defp random_names do
     Teiserver.store_put(
       :application_metadata_cache,
       "random_names_1",
@@ -49,8 +50,8 @@ defmodule Teiserver.MetadataCache do
     )
   end
 
-  defp audit() do
-    Teiserver.Logging.AuditLogLib.add_audit_types([
+  defp audit do
+    AuditLogLib.add_audit_types([
       "Account:User password reset",
       "Account:Failed login",
       "Account:Created user",

@@ -1,8 +1,9 @@
 defmodule Teiserver.BotFixtures do
+  @moduledoc false
   alias Teiserver.Bot
 
-  def create_bot() do
-    name = for _ <- 1..20, into: "", do: <<Enum.random(?a..?z)>>
+  def create_bot do
+    name = for _i <- 1..20, into: "", do: <<Enum.random(?a..?z)>>
     create_bot(name)
   end
 
@@ -11,7 +12,7 @@ defmodule Teiserver.BotFixtures do
     bot
   end
 
-  def start_script() do
+  def start_script do
     %{
       engine_version: "engineversion",
       game_name: "game name",
@@ -19,7 +20,7 @@ defmodule Teiserver.BotFixtures do
       start_pos_type: :fixed,
       ally_teams: [
         %{
-          teams: [%{user_id: 123, name: "player name", password: "123"}]
+          teams: [%{players: [%{user_id: 123, name: "player name", password: "123"}]}]
         }
       ]
     }

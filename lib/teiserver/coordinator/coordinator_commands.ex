@@ -1,10 +1,20 @@
 defmodule Teiserver.Coordinator.CoordinatorCommands do
-  alias Teiserver.{CacheUser, Account, Client, Coordinator, Moderation}
-  alias Teiserver.Lobby
-  alias Teiserver.Helper.NumberHelper
-  alias Teiserver.Account.{AccoladeLib, CodeOfConductData}
-  alias Teiserver.Coordinator.CoordinatorLib
+  @moduledoc false
+  alias ExULID.ULID
+  alias Teiserver.Account
+  alias Teiserver.Account.AccoladeLib
+  alias Teiserver.Account.Auth
+  alias Teiserver.Account.CodeOfConductData
+  alias Teiserver.CacheUser
+  alias Teiserver.Client
+  alias Teiserver.Communication
   alias Teiserver.Config
+  alias Teiserver.Coordinator
+  alias Teiserver.Coordinator.CoordinatorLib
+  alias Teiserver.Game.MatchRatingLib
+  alias Teiserver.Helper.NumberHelper
+  alias Teiserver.Lobby
+  alias Teiserver.Moderation
 
   @splitter "---------------------------"
   @always_allow ~w(help whoami whois discord coc mute unmute ignore unignore website party)
@@ -13,7 +23,7 @@ defmodule Teiserver.Coordinator.CoordinatorCommands do
   @forward_to_consul ~w(s status players follow joinq leaveq splitlobby y yes n no explain)
   @admin_commands ~w(broadcast)
 
-  def is_coordinator_command?(command) do
+  def coordinator_command?(command) do
     # The list of allowed commands are now defined in this file
     # They used to be defined in consul_server.ex under @coordinator_bot variable
     Enum.member?(@always_allow, command) || Enum.member?(@mod_allow, command)
@@ -22,9 +32,6 @@ defmodule Teiserver.Coordinator.CoordinatorCommands do
   @spec allow_command?(map(), map()) :: boolean()
   defp allow_command?(%{senderid: senderid} = cmd, state) do
     client = Client.get_client_by_id(senderid)
-    user = Account.get_user_by_id(senderid)
-
-    is_admin = Enum.member?(user.roles, "Admin")
 
     cond do
       client == nil ->
@@ -37,11 +44,11 @@ defmodule Teiserver.Coordinator.CoordinatorCommands do
         true
 
       # Allow all commands for Admins
-      is_admin ->
+      Auth.admin?(senderid) ->
         true
 
       # Allow all except Admin only commands for moderators
-      CacheUser.is_moderator?(user) and not Enum.member?(@admin_commands, cmd.command) ->
+      Auth.moderator?(senderid) and not Enum.member?(@admin_commands, cmd.command) ->
         true
 
       not Enum.member?(@always_allow ++ @forward_to_consul, cmd.command) ->
@@ -98,7 +105,7 @@ defmodule Teiserver.Coordinator.CoordinatorCommands do
 
     {:ok, code} =
       Account.create_code(%{
-        value: ExULID.ULID.generate(),
+        value: ULID.generate(),
         purpose: "one_time_login",
         expires: Timex.now() |> Timex.shift(minutes: 5),
         user_id: senderid,
@@ -142,7 +149,7 @@ defmodule Teiserver.Coordinator.CoordinatorCommands do
           [] ->
             "You currently have no accolades"
 
-          _ ->
+          _keys ->
             badge_types =
               Account.list_badge_types(search: [id_list: Map.keys(accolades)])
               |> Map.new(fn bt -> {bt.id, bt} end)
@@ -159,7 +166,7 @@ defmodule Teiserver.Coordinator.CoordinatorCommands do
       Account.list_ratings(
         search: [
           user_id: sender.id,
-          season: Teiserver.Game.MatchRatingLib.active_season()
+          season: MatchRatingLib.active_season()
         ],
         preload: [:rating_type]
       )
@@ -245,7 +252,7 @@ defmodule Teiserver.Coordinator.CoordinatorCommands do
           Account.list_ratings(
             search: [
               user_id: user.id,
-              season: Teiserver.Game.MatchRatingLib.active_season()
+              season: MatchRatingLib.active_season()
             ],
             preload: [:rating_type]
           )
@@ -276,7 +283,7 @@ defmodule Teiserver.Coordinator.CoordinatorCommands do
         ]
 
         mod_parts =
-          if CacheUser.is_moderator?(sender) do
+          if Auth.admin?(sender) or Auth.moderator?(sender) do
             # player_hours = Map.get(stats, "player_minutes", 0)/60 |> round
             # spectator_hours = Map.get(stats, "spectator_minutes", 0)/60 |> round
             # rank_time = CacheUser.rank_time(user.id)
@@ -293,7 +300,7 @@ defmodule Teiserver.Coordinator.CoordinatorCommands do
             smurf_string =
               case smurfs do
                 [] -> "No smurfs found"
-                _ -> "Found smurfs named: #{Enum.join(smurfs, ", ")}"
+                _list -> "Found smurfs named: #{Enum.join(smurfs, ", ")}"
               end
 
             accolades_string =
@@ -304,7 +311,7 @@ defmodule Teiserver.Coordinator.CoordinatorCommands do
                   [] ->
                     "They currently have no accolades"
 
-                  _ ->
+                  _keys ->
                     badge_types =
                       Account.list_badge_types(search: [id_list: Map.keys(accolades)])
                       |> Map.new(fn bt -> {bt.id, bt} end)
@@ -349,7 +356,7 @@ defmodule Teiserver.Coordinator.CoordinatorCommands do
     messages =
       CodeOfConductData.flat_data()
       |> Enum.filter(fn {_key, value} ->
-        String.contains?(value |> String.downcase(), search_term)
+        value |> String.downcase() |> String.contains?(search_term)
       end)
       |> Enum.map(fn {key, value} ->
         "#{key} - #{value}"
@@ -367,23 +374,28 @@ defmodule Teiserver.Coordinator.CoordinatorCommands do
   defp do_handle(%{command: "discord", senderid: senderid} = _cmd, state) do
     sender = CacheUser.get_user_by_id(senderid)
 
-    if sender.discord_id != nil do
-      CacheUser.send_direct_message(
-        state.userid,
-        senderid,
-        "You already have a discord account linked; the discord link is: #{Application.get_env(:teiserver, Teiserver)[:discord]}"
-      )
-    else
-      code = (:rand.uniform(899_999) + 100_000) |> to_string()
-      Teiserver.cache_put(:discord_bridge_account_codes, senderid, code)
+    cond do
+      sender.discord_id != nil ->
+        CacheUser.send_direct_message(
+          state.userid,
+          senderid,
+          "You already have a discord account linked; the discord link is: #{Application.get_env(:teiserver, Teiserver)[:discord]}"
+        )
 
-      CacheUser.send_direct_message(state.userid, senderid, [
-        @splitter,
-        "To link your discord account, send a private message to Teiserver Bot on the BAR discord with the message:",
-        "$discord #{senderid}-#{code}",
-        "This code will expire after 5 minutes",
-        "The discord link is: #{Application.get_env(:teiserver, Teiserver)[:discord]}"
-      ])
+      Communication.use_discord?() ->
+        code = (:rand.uniform(899_999) + 100_000) |> to_string()
+        Teiserver.cache_put(:discord_bridge_account_codes, senderid, code)
+
+        CacheUser.send_direct_message(state.userid, senderid, [
+          @splitter,
+          "To link your discord account, send a private message to Teiserver Bot on the BAR discord with the message:",
+          "$discord #{senderid}-#{code}",
+          "This code will expire after 5 minutes",
+          "The discord link is: #{Application.get_env(:teiserver, Teiserver)[:discord]}"
+        ])
+
+      true ->
+        nil
     end
 
     state
@@ -401,11 +413,11 @@ defmodule Teiserver.Coordinator.CoordinatorCommands do
         )
 
       user ->
-        if CacheUser.is_moderator?(user) do
-          Coordinator.send_to_user(senderid, "You cannot block moderators.")
+        if Auth.admin?(user) or Auth.moderator?(user) do
+          Coordinator.send_to_user(senderid, "You cannot mute this user.")
         else
           case Account.ignore_user(senderid, user.id) do
-            {:ok, _} ->
+            {:ok, _result} ->
               Coordinator.send_to_user(
                 senderid,
                 "#{user.name} is now ignored, you can unmute them with the $unignore command or via the account section of the server website."
@@ -516,7 +528,7 @@ defmodule Teiserver.Coordinator.CoordinatorCommands do
 
     {:ok, code} =
       Account.create_code(%{
-        value: ExULID.ULID.generate(),
+        value: ULID.generate(),
         purpose: "one_time_login",
         expires: Timex.now() |> Timex.shift(minutes: 5),
         user_id: senderid,
@@ -574,5 +586,5 @@ defmodule Teiserver.Coordinator.CoordinatorCommands do
     Lobby.say(senderid, message, lobby_id)
   end
 
-  defp say_command(_), do: :ok
+  defp say_command(_cmd), do: :ok
 end

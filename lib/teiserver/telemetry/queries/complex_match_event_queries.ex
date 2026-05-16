@@ -1,7 +1,9 @@
 defmodule Teiserver.Telemetry.ComplexMatchEventQueries do
   @moduledoc false
-  use TeiserverWeb, :queries
+
+  alias Ecto.Adapters.SQL
   alias Teiserver.Telemetry.ComplexMatchEvent
+  use TeiserverWeb, :queries
 
   # Queries
   @spec query_complex_match_events(list) :: Ecto.Query.t()
@@ -27,8 +29,8 @@ defmodule Teiserver.Telemetry.ComplexMatchEventQueries do
   end
 
   @spec _where(Ecto.Query.t(), atom(), any()) :: Ecto.Query.t()
-  defp _where(query, _, ""), do: query
-  defp _where(query, _, nil), do: query
+  defp _where(query, _key, ""), do: query
+  defp _where(query, _key, nil), do: query
 
   defp _where(query, :id, id) do
     from complex_match_events in query,
@@ -144,7 +146,7 @@ defmodule Teiserver.Telemetry.ComplexMatchEventQueries do
     LIMIT $5
     """
 
-    case Ecto.Adapters.SQL.query(Repo, events_query, [
+    case SQL.query(Repo, events_query, [
            event_type_id,
            start_datetime,
            end_datetime,
@@ -158,7 +160,7 @@ defmodule Teiserver.Telemetry.ComplexMatchEventQueries do
             |> Map.put("game_time", game_time)
           end)
 
-        case Ecto.Adapters.SQL.query(Repo, aggregates_query, [
+        case SQL.query(Repo, aggregates_query, [
                key,
                event_type_id,
                start_datetime,

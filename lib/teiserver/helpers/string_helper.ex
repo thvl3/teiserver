@@ -74,9 +74,10 @@ defmodule Teiserver.Helper.StringHelper do
   def possessive(s) do
     last_1digit = String.slice(s, -1, 1)
 
-    cond do
-      last_1digit == "s" -> "#{s}'"
-      true -> "#{s}'s"
+    if last_1digit == "s" do
+      "#{s}'"
+    else
+      "#{s}'s"
     end
   end
 
@@ -135,7 +136,7 @@ defmodule Teiserver.Helper.StringHelper do
   def breakup_long_words(s), do: breakup_long_words(s, 100)
 
   @spec breakup_long_words(nil | String.t(), non_neg_integer()) :: nil | String.t()
-  def breakup_long_words(nil, _), do: nil
+  def breakup_long_words(nil, _max_length), do: nil
 
   def breakup_long_words(string, max_length) do
     string

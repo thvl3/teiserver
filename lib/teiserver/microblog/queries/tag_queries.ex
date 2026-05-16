@@ -1,7 +1,8 @@
 defmodule Teiserver.Microblog.TagQueries do
   @moduledoc false
-  use TeiserverWeb, :queries
+
   alias Teiserver.Microblog.Tag
+  use TeiserverWeb, :queries
 
   # Queries
   @spec query_tags(list) :: Ecto.Query.t()
@@ -27,8 +28,8 @@ defmodule Teiserver.Microblog.TagQueries do
   end
 
   @spec _where(Ecto.Query.t(), atom(), any()) :: Ecto.Query.t()
-  defp _where(query, _, ""), do: query
-  defp _where(query, _, nil), do: query
+  defp _where(query, _key, ""), do: query
+  defp _where(query, _key, nil), do: query
 
   defp _where(query, :id, id) do
     from tags in query,

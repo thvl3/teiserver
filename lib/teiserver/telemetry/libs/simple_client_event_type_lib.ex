@@ -1,7 +1,9 @@
 defmodule Teiserver.Telemetry.SimpleClientEventTypeLib do
   @moduledoc false
+
+  alias Teiserver.Telemetry.SimpleClientEventType
+  alias Teiserver.Telemetry.SimpleClientEventTypeQueries
   use TeiserverWeb, :library_newform
-  alias Teiserver.Telemetry.{SimpleClientEventType, SimpleClientEventTypeQueries}
 
   # Helper function
   @spec get_or_add_simple_client_event_type(String.t()) :: non_neg_integer()
@@ -25,7 +27,7 @@ defmodule Teiserver.Telemetry.SimpleClientEventTypeLib do
 
           event_type.id
 
-        [%{id: id} | _] ->
+        [%{id: id} | _rest] ->
           id
       end
     end)
@@ -110,7 +112,10 @@ defmodule Teiserver.Telemetry.SimpleClientEventTypeLib do
   """
   @spec update_simple_client_event_type(SimpleClientEventType, map) ::
           {:ok, SimpleClientEventType} | {:error, Ecto.Changeset}
-  def update_simple_client_event_type(%SimpleClientEventType{} = simple_client_event_type, attrs) do
+  def update_simple_client_event_type(
+        %SimpleClientEventType{} = simple_client_event_type,
+        attrs
+      ) do
     simple_client_event_type
     |> SimpleClientEventType.changeset(attrs)
     |> Repo.update()

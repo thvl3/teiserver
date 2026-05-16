@@ -1,10 +1,11 @@
 defmodule TeiserverWeb.ClientLive.Index do
-  use TeiserverWeb, :live_view
   alias Phoenix.PubSub
-
   alias Teiserver
-  alias Teiserver.{Client, CacheUser}
   alias Teiserver.Account.UserLib
+  alias Teiserver.CacheUser
+  alias Teiserver.Client
+
+  use TeiserverWeb, :live_view
 
   @extra_menu_content """
   &nbsp;&nbsp;&nbsp;
@@ -14,7 +15,7 @@ defmodule TeiserverWeb.ClientLive.Index do
     </a>
   """
 
-  @impl true
+  @impl Phoenix.LiveView
   def mount(_params, session, socket) do
     clients =
       list_clients()
@@ -22,12 +23,13 @@ defmodule TeiserverWeb.ClientLive.Index do
 
     users =
       clients
-      |> Map.new(fn {userid, _} ->
+      |> Map.new(fn {userid, _client} ->
         {
           userid,
           CacheUser.get_user_by_id(userid) |> limited_user()
         }
       end)
+      |> Map.filter(fn {_key, value} -> not is_nil(value) end)
 
     socket =
       socket
@@ -47,7 +49,7 @@ defmodule TeiserverWeb.ClientLive.Index do
     {:ok, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_params(params, _url, socket) do
     case allow?(socket.assigns[:current_user], "Moderator") do
       true ->
@@ -60,14 +62,14 @@ defmodule TeiserverWeb.ClientLive.Index do
     end
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_info(
         {:client_index_throttle, new_clients, removed_clients},
         %{assigns: assigns} = socket
       ) do
     clients =
       assigns.clients
-      |> Enum.filter(fn {userid, _} ->
+      |> Enum.filter(fn {userid, _client} ->
         not Enum.member?(removed_clients, userid)
       end)
       |> Map.new()
@@ -85,6 +87,7 @@ defmodule TeiserverWeb.ClientLive.Index do
           |> limited_user()
         end
       end)
+      |> Enum.reject(&is_nil(&1))
       |> Map.new(fn user -> {user.id, user} end)
 
     socket =
@@ -96,7 +99,7 @@ defmodule TeiserverWeb.ClientLive.Index do
     {:noreply, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_event("add-filter:" <> filter, _event, socket) do
     new_filters =
       [filter | socket.assigns.filters]
@@ -143,12 +146,14 @@ defmodule TeiserverWeb.ClientLive.Index do
             true
         end
       end)
-      |> Enum.sort_by(fn {_, client} -> String.downcase(client.name) end, &<=/2)
-      |> Enum.map(fn {key, _} -> key end)
+      |> Enum.sort_by(fn {_userid, client} -> String.downcase(client.name) end, &<=/2)
+      |> Enum.map(fn {key, _client} -> key end)
 
     socket
     |> assign(:client_ids, client_ids)
   end
+
+  defp limited_user(nil), do: nil
 
   defp limited_user(user) do
     Map.take(user, ~w(id bot moderator hw_hash chobby_hash)a)

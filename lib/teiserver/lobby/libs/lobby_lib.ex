@@ -1,13 +1,17 @@
 defmodule Teiserver.Lobby.LobbyLib do
-  @moduledoc """
-
-  """
+  @moduledoc false
 
   alias Phoenix.PubSub
-  alias Teiserver.{Coordinator, Account, Lobby}
-  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
+  alias Teiserver.Account
+  alias Teiserver.Battle.LobbyServer
+  alias Teiserver.Config
+  alias Teiserver.Coordinator
   alias Teiserver.Data.Types, as: T
+  alias Teiserver.Lobby
+
   require Logger
+
+  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
 
   @spec get_lobby(T.lobby_id()) :: T.lobby() | nil
   def get_lobby(id) do
@@ -41,7 +45,7 @@ defmodule Teiserver.Lobby.LobbyLib do
       %{lobby_id: lobby_id} ->
         get_lobby_match_id(lobby_id)
 
-      _ ->
+      _client ->
         nil
     end
   end
@@ -67,7 +71,7 @@ defmodule Teiserver.Lobby.LobbyLib do
 
     case lobby_list do
       [] -> nil
-      [lobby | _] -> lobby
+      [lobby | _rest] -> lobby
     end
   end
 
@@ -82,17 +86,17 @@ defmodule Teiserver.Lobby.LobbyLib do
 
     case lobby_list do
       [] -> nil
-      [lobby | _] -> lobby
+      [lobby | _rest] -> lobby
     end
   end
 
   @spec list_lobby_ids :: [T.lobby_id()]
-  def list_lobby_ids() do
+  def list_lobby_ids do
     Horde.Registry.select(Teiserver.LobbyRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
   end
 
   @spec list_lobbies() :: [T.lobby()]
-  def list_lobbies() do
+  def list_lobbies do
     list_lobby_ids()
     |> Enum.map(fn lobby_id -> get_lobby(lobby_id) end)
     |> Enum.filter(fn lobby -> lobby != nil end)
@@ -102,8 +106,8 @@ defmodule Teiserver.Lobby.LobbyLib do
   def list_throttled_lobbies(type) do
     throttle_pid =
       case Horde.Registry.lookup(Teiserver.ThrottleRegistry, "LobbyIndexThrottle") do
-        [{pid, _}] -> pid
-        _ -> nil
+        [{pid, _value}] -> pid
+        _no_match -> nil
       end
 
     case throttle_pid do
@@ -116,14 +120,14 @@ defmodule Teiserver.Lobby.LobbyLib do
 
           # If the process has somehow died, we just return an empty list
         catch
-          :exit, _ ->
+          :exit, _reason ->
             []
         end
     end
   end
 
   @spec stream_lobbies() :: Stream.t()
-  def stream_lobbies() do
+  def stream_lobbies do
     list_lobby_ids()
     |> Enum.shuffle()
     |> Stream.map(fn lobby_id -> get_lobby(lobby_id) end)
@@ -193,7 +197,7 @@ defmodule Teiserver.Lobby.LobbyLib do
   @spec do_create_new_lobby(map) :: T.lobby()
   defp do_create_new_lobby(data) do
     data
-    |> Teiserver.Lobby.create_lobby()
+    |> Lobby.create_lobby()
     |> add_lobby()
   end
 
@@ -372,7 +376,7 @@ defmodule Teiserver.Lobby.LobbyLib do
   end
 
   @spec add_lobby(T.lobby()) :: T.lobby()
-  def add_lobby(%{founder_id: _} = lobby) do
+  def add_lobby(%{founder_id: _founder_id} = lobby) do
     Lobby.start_battle_lobby_throttle(lobby.id)
     start_lobby_server(lobby)
 
@@ -397,7 +401,7 @@ defmodule Teiserver.Lobby.LobbyLib do
   def start_lobby_server(lobby) do
     {:ok, server_pid} =
       DynamicSupervisor.start_child(Teiserver.LobbySupervisor, {
-        Teiserver.Battle.LobbyServer,
+        LobbyServer,
         name: "lobby_#{lobby.id}",
         data: %{
           lobby: lobby
@@ -411,15 +415,15 @@ defmodule Teiserver.Lobby.LobbyLib do
   def lobby_exists?(lobby_id) when is_integer(lobby_id) do
     case get_lobby_pid(lobby_id) do
       nil -> false
-      _ -> true
+      _pid -> true
     end
   end
 
   @spec get_lobby_pid(T.lobby_id()) :: pid() | nil
   def get_lobby_pid(lobby_id) when is_integer(lobby_id) do
     case Horde.Registry.lookup(Teiserver.LobbyRegistry, lobby_id) do
-      [{pid, _}] -> pid
-      _ -> nil
+      [{pid, _value}] -> pid
+      _no_match -> nil
     end
   end
 
@@ -453,7 +457,7 @@ defmodule Teiserver.Lobby.LobbyLib do
 
           # If the process has somehow died, we just return nil
         catch
-          :exit, _ ->
+          :exit, _reason ->
             nil
         end
     end
@@ -473,7 +477,6 @@ defmodule Teiserver.Lobby.LobbyLib do
 
   @spec close_lobby(integer() | nil, atom) :: :ok
   def close_lobby(lobby_id, reason \\ :closed) when is_integer(lobby_id) do
-    lobby = get_lobby(lobby_id)
     Coordinator.close_lobby(lobby_id)
 
     # Kill lobby server process
@@ -493,7 +496,7 @@ defmodule Teiserver.Lobby.LobbyLib do
     :ok =
       PubSub.broadcast(
         Teiserver.PubSub,
-        "teiserver_lobby_updates:#{lobby.id}",
+        "teiserver_lobby_updates:#{lobby_id}",
         %{
           channel: "teiserver_lobby_updates",
           event: :closed,
@@ -530,7 +533,7 @@ defmodule Teiserver.Lobby.LobbyLib do
 
   @spec get_team_config(:all | integer()) :: map() | nil
   def get_team_config(:all) do
-    if Teiserver.Config.get_site_config_cache("lobby.Broadcast Battle Teams Information") do
+    if Config.get_site_config_cache("lobby.Broadcast Battle Teams Information") do
       ttl_ms = 1_000
       now = System.monotonic_time(:millisecond)
 
@@ -538,22 +541,22 @@ defmodule Teiserver.Lobby.LobbyLib do
         {cached, ts} when now - ts < ttl_ms ->
           cached
 
-        _ ->
+        _expired ->
           lobby_ids = Lobby.list_lobby_ids()
 
           tasks =
             Enum.map(lobby_ids, fn lobby_id ->
               Task.async(fn ->
                 try do
-                  case Teiserver.Coordinator.get_team_config(lobby_id, 4_000) do
+                  case Coordinator.get_team_config(lobby_id, 4_000) do
                     %{host_teamsize: team_size, host_teamcount: team_count} ->
                       {lobby_id, %{teamSize: team_size, nbTeams: team_count}}
 
-                    _ ->
+                    _other ->
                       nil
                   end
                 catch
-                  _, _ -> nil
+                  _kind, _reason -> nil
                 end
               end)
             end)
@@ -576,17 +579,17 @@ defmodule Teiserver.Lobby.LobbyLib do
   end
 
   def get_team_config(lobby_id) when is_integer(lobby_id) do
-    if Teiserver.Config.get_site_config_cache("lobby.Broadcast Battle Teams Information") do
+    if Config.get_site_config_cache("lobby.Broadcast Battle Teams Information") do
       try do
-        case Teiserver.Coordinator.get_team_config(lobby_id) do
+        case Coordinator.get_team_config(lobby_id) do
           %{host_teamsize: team_size, host_teamcount: team_count} ->
             %{lobby_id => %{teamSize: team_size, nbTeams: team_count}}
 
-          _ ->
+          _other ->
             nil
         end
       catch
-        _, _ -> nil
+        _kind, _reason -> nil
       end
     else
       nil

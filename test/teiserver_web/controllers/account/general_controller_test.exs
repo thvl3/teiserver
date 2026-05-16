@@ -1,24 +1,21 @@
 defmodule TeiserverWeb.Account.GeneralControllerTest do
+  alias Teiserver.Helpers.GeneralTestLib
+  alias Teiserver.TeiserverTestLib
+
   use TeiserverWeb.ConnCase
 
-  alias Central.Helpers.GeneralTestLib
-
   setup do
-    GeneralTestLib.conn_setup(Teiserver.TeiserverTestLib.player_permissions())
-    |> Teiserver.TeiserverTestLib.conn_setup()
+    GeneralTestLib.conn_setup(TeiserverTestLib.player_permissions())
+    |> TeiserverTestLib.conn_setup()
   end
 
-  @tag :needs_attention
   test "index", %{conn: conn} do
-    conn = get(conn, Routes.ts_account_general_path(conn, :index))
-
-    assert html_response(conn, 200) =~ "Friends/Mutes/Invites"
-    assert html_response(conn, 200) =~ "Preferences"
+    conn = get(conn, ~p"/teiserver/account/details")
+    assert html_response(conn, 200) =~ "Edit account details"
   end
 
   test "admin permissions", %{conn: conn} do
-    assert_raise Bodyguard.NotAuthorizedError, fn ->
-      get(conn, Routes.ts_admin_general_path(conn, :index))
-    end
+    resp = get(conn, Routes.ts_admin_general_path(conn, :index))
+    assert redirected_to(resp) == ~p"/"
   end
 end

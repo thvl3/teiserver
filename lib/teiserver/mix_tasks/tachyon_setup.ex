@@ -1,22 +1,23 @@
 defmodule Mix.Tasks.Teiserver.TachyonSetup do
-  @usage_str "Usage: `mix teiserver.tachyon_setup`"
-
   @moduledoc """
   Ensure there is an OAuth app for tachyon lobby and another one to control
   assets like maps and engines with bots.
 
-  #{@usage_str}
+  Usage: `mix teiserver.tachyon_setup`
   """
 
   @shortdoc "setup oauth apps for tachyon"
 
+  alias Teiserver.Repo
+  alias Teiserver.Tachyon.Tasks.SetupApps
+  alias Teiserver.Tachyon.Tasks.SetupAssets
+
   use Mix.Task
-  alias Teiserver.Tachyon.Tasks.{SetupApps, SetupAssets}
 
   @impl Mix.Task
   def run(_args) do
     Application.ensure_all_started([:ecto, :ecto_sql, :tzdata])
-    Teiserver.Repo.start_link()
+    Repo.start_link()
     SetupApps.ensure_lobby_app()
     SetupApps.ensure_asset_admin_app()
     SetupApps.ensure_user_admin_app()
@@ -28,7 +29,7 @@ defmodule Mix.Tasks.Teiserver.TachyonSetup do
       {:ok, {:updated, engine}} ->
         Mix.shell().info("Engine with name #{engine.name} set up for matchmaking")
 
-      {:ok, {:noop, _}} ->
+      {:ok, {:noop, _engine}} ->
         Mix.shell().info("Engine already setup for matchmaking")
     end
 
@@ -39,7 +40,7 @@ defmodule Mix.Tasks.Teiserver.TachyonSetup do
       {:ok, {:updated, game}} ->
         Mix.shell().info("game with name #{game.name} set up for matchmaking")
 
-      {:ok, {:noop, _}} ->
+      {:ok, {:noop, _game}} ->
         Mix.shell().info("game already setup for matchmaking")
     end
 

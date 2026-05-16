@@ -3,17 +3,19 @@ defmodule Teiserver.Monitoring.StripedPeep do
   "Striped" storage based on `PromEx.Storage.Peep`.
   """
 
+  alias Peep.Prometheus
+
   @behaviour PromEx.Storage
 
-  @impl true
+  @impl PromEx.Storage
   def scrape(name) do
     name
     |> Peep.get_all_metrics()
-    |> Peep.Prometheus.export()
+    |> Prometheus.export()
     |> IO.iodata_to_binary()
   end
 
-  @impl true
+  @impl PromEx.Storage
   def child_spec(name, metrics) do
     opts = [
       name: name,

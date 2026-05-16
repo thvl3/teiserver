@@ -9,8 +9,8 @@ defmodule Teiserver.Player.System do
     Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
   end
 
-  @impl true
-  def init(_) do
+  @impl Supervisor
+  def init(_init_arg) do
     children = [
       Teiserver.Player.SessionRegistry,
       Teiserver.Player.SessionSupervisor,

@@ -1,10 +1,12 @@
 defmodule TeiserverWeb.Admin.OAuthApplicationView do
+  alias Phoenix.Component, as: Phx
+  alias Teiserver.OAuth.ApplicationLib
+  alias TeiserverWeb.CoreComponents, as: CC
+
   use TeiserverWeb, :view
 
   import TeiserverWeb.Components.OAuthApplicationComponent
-  alias TeiserverWeb.CoreComponents, as: CC
-  alias Phoenix.Component, as: Phx
 
-  def view_colour(), do: Teiserver.OAuth.ApplicationLib.colours()
-  def icon(), do: Teiserver.OAuth.ApplicationLib.icon()
+  def view_colour, do: ApplicationLib.colours()
+  def icon, do: ApplicationLib.icon()
 end

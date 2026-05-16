@@ -60,7 +60,7 @@ defmodule Teiserver.Account.CodeOfConductData do
   end
 
   @spec flat_data :: list
-  def flat_data() do
+  def flat_data do
     data()
     |> Enum.map(fn {key1, items} ->
       items
@@ -77,7 +77,7 @@ defmodule Teiserver.Account.CodeOfConductData do
       [p1, p2] ->
         get_in(data(), [p1, p2])
 
-      _ ->
+      _other ->
         nil
     end
   end

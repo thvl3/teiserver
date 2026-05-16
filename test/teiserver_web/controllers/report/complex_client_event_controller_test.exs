@@ -1,13 +1,12 @@
 defmodule TeiserverWeb.Report.ComplexClientEventControllerTest do
+  alias Teiserver.Helpers.GeneralTestLib
+  alias Teiserver.TeiserverTestLib
+
   use TeiserverWeb.ConnCase
 
-  alias Central.Helpers.GeneralTestLib
-
-  @moduletag :needs_attention
-
   setup do
-    GeneralTestLib.conn_setup(Teiserver.TeiserverTestLib.admin_permissions())
-    |> Teiserver.TeiserverTestLib.conn_setup()
+    GeneralTestLib.conn_setup(TeiserverTestLib.server_permissions())
+    |> TeiserverTestLib.conn_setup()
   end
 
   test "index", %{conn: conn} do

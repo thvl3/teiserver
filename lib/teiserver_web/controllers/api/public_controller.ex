@@ -1,7 +1,7 @@
 defmodule TeiserverWeb.API.PublicController do
-  use TeiserverWeb, :controller
   alias Teiserver.Account
   alias Teiserver.Game.MatchRatingLib
+  use TeiserverWeb, :controller
 
   @rating_types [
     "Small Team",
@@ -57,7 +57,7 @@ defmodule TeiserverWeb.API.PublicController do
             |> json(%{error: "Invalid season parameter"})
         end
 
-      _ ->
+      _invalid ->
         conn
         |> put_status(400)
         |> json(%{error: "Invalid season parameter"})
@@ -83,13 +83,13 @@ defmodule TeiserverWeb.API.PublicController do
   end
 
   defp leaderboard_ratings(season, activity_time) do
-    rating_type_lookup = Teiserver.Game.MatchRatingLib.rating_type_name_lookup()
+    rating_type_lookup = MatchRatingLib.rating_type_name_lookup()
 
     @rating_types
     |> Enum.map(fn rating_type ->
       {rating_type, rating_type_lookup[rating_type]}
     end)
-    |> Enum.filter(fn {_, type_id} -> not is_nil(type_id) end)
+    |> Enum.filter(fn {_rating_type, type_id} -> not is_nil(type_id) end)
     |> Enum.map(fn {rating_type, type_id} ->
       players =
         Account.list_ratings(

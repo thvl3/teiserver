@@ -1,10 +1,12 @@
 defmodule TeiserverWeb.Moderation.ReportUserLive.Index do
-  use TeiserverWeb, :live_view
-  alias Teiserver.{Account, Battle, Moderation}
-  alias Teiserver.Moderation.ReportLib
+  alias Teiserver.Account
+  alias Teiserver.Battle
   alias Teiserver.Helper.TimexHelper
+  alias Teiserver.Moderation
+  alias Teiserver.Moderation.ReportLib
+  use TeiserverWeb, :live_view
 
-  @impl true
+  @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     socket =
       socket
@@ -20,7 +22,7 @@ defmodule TeiserverWeb.Moderation.ReportUserLive.Index do
     {:ok, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_params(%{"id" => id}, _url, socket) do
     user = Account.get_user_by_id(id)
 
@@ -47,7 +49,7 @@ defmodule TeiserverWeb.Moderation.ReportUserLive.Index do
     {:noreply, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_event(
         "submit-extra-text",
         _event,
@@ -62,8 +64,8 @@ defmodule TeiserverWeb.Moderation.ReportUserLive.Index do
       match_id: assigns.match_id
     }
 
-    case Moderation.create_report_group_and_report(report_params) do
-      {:ok, _report_group, _report} ->
+    case Moderation.create_report(report_params) do
+      {:ok, _report} ->
         {:noreply,
          socket
          |> assign(:result, :success)
@@ -85,14 +87,18 @@ defmodule TeiserverWeb.Moderation.ReportUserLive.Index do
      |> assign(:extra_text, value)}
   end
 
-  def handle_event("select-match-" <> match_id_str, _, %{assigns: %{stage: :match}} = socket) do
+  def handle_event(
+        "select-match-" <> match_id_str,
+        _params,
+        %{assigns: %{stage: :match}} = socket
+      ) do
     {:noreply,
      socket
      |> assign(:match_id, String.to_integer(match_id_str))
      |> assign(:stage, :extra_text)}
   end
 
-  def handle_event("select-no-match", _, %{assigns: %{stage: :match}} = socket) do
+  def handle_event("select-no-match", _params, %{assigns: %{stage: :match}} = socket) do
     {:noreply,
      socket
      |> assign(:match_id, nil)
@@ -124,7 +130,7 @@ defmodule TeiserverWeb.Moderation.ReportUserLive.Index do
       ) do
     socket =
       case Account.ignore_user(current_user.id, user.id) do
-        {:ok, _} ->
+        {:ok, _result} ->
           socket
           |> put_flash(:success, "You are now ignoring #{user.name}")
           |> get_relationship()
@@ -145,7 +151,7 @@ defmodule TeiserverWeb.Moderation.ReportUserLive.Index do
       ) do
     socket =
       case Account.avoid_user(current_user.id, user.id) do
-        {:ok, _} ->
+        {:ok, _result} ->
           socket
           |> put_flash(:success, "You are now avoiding #{user.name}")
           |> get_relationship()
@@ -166,7 +172,7 @@ defmodule TeiserverWeb.Moderation.ReportUserLive.Index do
       ) do
     socket =
       case Account.block_user(current_user.id, user.id) do
-        {:ok, _} ->
+        {:ok, _result} ->
           socket
           |> put_flash(:success, "You are now blocking #{user.name}")
           |> get_relationship()
@@ -238,7 +244,10 @@ defmodule TeiserverWeb.Moderation.ReportUserLive.Index do
     |> assign(:matches, matches)
   end
 
-  defp allowed_to_use_form(%{assigns: %{current_user: current_user, user: target_user}} = socket) do
+  defp allowed_to_use_form(
+         %{assigns: %{current_user: current_user, user: target_user}} =
+           socket
+       ) do
     {allowed, failure_reason} =
       cond do
         current_user == nil ->
@@ -247,7 +256,7 @@ defmodule TeiserverWeb.Moderation.ReportUserLive.Index do
         current_user.id == target_user.id ->
           {false, "You cannot report yourself"}
 
-        Account.is_restricted?(current_user, "Reporting") ->
+        Account.restricted?(current_user.id, "Reporting") ->
           {false, "You are currently restricted from submitting new reports"}
 
         true ->

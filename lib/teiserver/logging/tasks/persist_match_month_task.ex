@@ -1,6 +1,8 @@
 defmodule Teiserver.Logging.Tasks.PersistMatchMonthTask do
-  use Oban.Worker, queue: :teiserver
+  @moduledoc false
   alias Teiserver.Logging
+  alias Teiserver.Logging.Tasks.PersistMatchMonthTask
+  use Oban.Worker, queue: :teiserver
   import Ecto.Query, warn: false
 
   @sections ~w(bots duel ffa raptors scavengers team small_team large_team totals)
@@ -26,7 +28,7 @@ defmodule Teiserver.Logging.Tasks.PersistMatchMonthTask do
 
   @impl Oban.Worker
   @spec perform(any) :: :ok
-  def perform(_) do
+  def perform(_job) do
     log =
       case Logging.get_last_match_month_log() do
         nil ->
@@ -39,7 +41,7 @@ defmodule Teiserver.Logging.Tasks.PersistMatchMonthTask do
 
     if log != nil do
       %{}
-      |> Teiserver.Logging.Tasks.PersistMatchMonthTask.new()
+      |> PersistMatchMonthTask.new()
       |> Oban.insert()
     end
 
@@ -48,7 +50,7 @@ defmodule Teiserver.Logging.Tasks.PersistMatchMonthTask do
 
   # For when there are no existing logs
   # we need to ensure the earliest log is from last month, not this month
-  defp perform_first_time() do
+  defp perform_first_time do
     first_logs =
       Logging.list_match_day_logs(
         order: "Oldest first",
@@ -77,7 +79,7 @@ defmodule Teiserver.Logging.Tasks.PersistMatchMonthTask do
           })
         end
 
-      _ ->
+      _empty ->
         nil
     end
   end
@@ -119,7 +121,7 @@ defmodule Teiserver.Logging.Tasks.PersistMatchMonthTask do
   end
 
   @spec month_so_far() :: map()
-  def month_so_far() do
+  def month_so_far do
     now = Timex.now()
 
     Logging.list_match_day_logs(
@@ -155,10 +157,10 @@ defmodule Teiserver.Logging.Tasks.PersistMatchMonthTask do
         weighted_count:
           existing.aggregate.weighted_count + (data["aggregate"]["weighted_count"] || 0)
       },
-      duration: sum_maps(existing.duration, data["duration"] || 0),
-      maps: sum_maps(existing.maps, data["maps"] || 0),
-      matches_per_hour: sum_maps(existing.matches_per_hour, data["matches_per_hour"] || 0),
-      team_sizes: sum_maps(existing.team_sizes, data["team_sizes"] || 0)
+      duration: sum_maps(existing.duration, data["duration"] || %{}),
+      maps: sum_maps(existing.maps, data["maps"] || %{}),
+      matches_per_hour: sum_maps(existing.matches_per_hour, data["matches_per_hour"] || %{}),
+      team_sizes: sum_maps(existing.team_sizes, data["team_sizes"] || %{})
     }
   end
 

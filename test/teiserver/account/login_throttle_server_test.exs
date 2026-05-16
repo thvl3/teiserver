@@ -1,10 +1,10 @@
 defmodule Teiserver.Account.LoginThrottleServerTest do
   @moduledoc false
 
-  use Teiserver.DataCase, async: false
-  alias Teiserver.Config
   alias Teiserver.Account
+  alias Teiserver.Account.Auth
   alias Teiserver.Account.LoginThrottleServer
+  use Teiserver.DataCase, async: false
 
   import Teiserver.TeiserverTestLib,
     only: [
@@ -22,29 +22,29 @@ defmodule Teiserver.Account.LoginThrottleServerTest do
   end
 
   test "can stop user from login" do
-    set_capacity(0)
     user = new_user()
+    set_capacity(0)
     assert LoginThrottleServer.attempt_login(self(), user.id) == false
     refute_receive {:login_accepted, _}, 5
   end
 
   test "bots ignore limits" do
-    set_capacity(0)
     bot = new_user()
     bot_id = bot.id
-    Account.update_cache_user(bot.id, %{roles: ["Bot"]})
+    Auth.add_roles(bot.id, ["Bot"])
+    set_capacity(0)
     assert LoginThrottleServer.attempt_login(self(), bot_id) == true
   end
 
   test "can immediately log in when there is capacity" do
-    set_capacity(1)
     user = new_user()
+    set_capacity(1)
     assert LoginThrottleServer.attempt_login(self(), user.id) == true
   end
 
   test "can login when capacity becomes available" do
-    set_capacity(0)
     user = new_user()
+    set_capacity(0)
     assert LoginThrottleServer.attempt_login(self(), user.id) == false
     assert LoginThrottleServer.get_queue_length() == 1
     set_capacity(1)
@@ -53,12 +53,11 @@ defmodule Teiserver.Account.LoginThrottleServerTest do
   end
 
   test "works with many players" do
-    set_capacity(0)
-
     {user1, t1} = {new_user(), oneshot_pid()}
     {user2, t2} = {new_user(), oneshot_pid()}
     user3 = new_user()
 
+    set_capacity(0)
     assert LoginThrottleServer.attempt_login(t1.pid, user1.id) == false
     assert LoginThrottleServer.attempt_login(t2.pid, user2.id) == false
     assert LoginThrottleServer.attempt_login(self(), user3.id) == false
@@ -75,10 +74,10 @@ defmodule Teiserver.Account.LoginThrottleServerTest do
   end
 
   test "ignore players that have disconnected" do
-    set_capacity(0)
     {user1, t1} = {new_user(), oneshot_pid()}
     user2 = new_user()
 
+    set_capacity(0)
     assert LoginThrottleServer.attempt_login(t1.pid, user1.id) == false
     assert LoginThrottleServer.attempt_login(self(), user2.id) == false
     assert LoginThrottleServer.get_queue_length() == 2
@@ -101,11 +100,11 @@ defmodule Teiserver.Account.LoginThrottleServerTest do
   end
 
   test "respect rate limiter" do
-    set_capacity(0)
     LoginThrottleServer.reset_rate_limiter(1, true)
     {user1, t1} = {new_user(), oneshot_pid()}
     user2 = new_user()
 
+    set_capacity(0)
     assert LoginThrottleServer.attempt_login(t1.pid, user1.id) == false
     assert LoginThrottleServer.attempt_login(self(), user2.id) == false
     assert LoginThrottleServer.get_queue_length() == 2
@@ -120,24 +119,30 @@ defmodule Teiserver.Account.LoginThrottleServerTest do
   end
 
   test "respect rate limiter even when there is capacity" do
-    set_capacity(100)
     LoginThrottleServer.reset_rate_limiter(1, false)
     {user1, t1} = {new_user(), oneshot_pid()}
-    user2 = new_user()
+    {user2, t2} = {new_user(), oneshot_pid()}
 
+    bot = new_user()
+    Auth.add_roles(bot.id, ["Bot"])
+
+    set_capacity(100)
     assert LoginThrottleServer.attempt_login(t1.pid, user1.id) == true
-    assert LoginThrottleServer.attempt_login(self(), user2.id) == false
+    assert LoginThrottleServer.attempt_login(t2.pid, user2.id) == false
     assert LoginThrottleServer.get_queue_length() == 1
+
+    # bots do ignore rate limits
+    assert LoginThrottleServer.attempt_login(self(), bot.id) == true
   end
 
   defp set_capacity(n) do
     # this is a hack because there seems to be some flakyness with `count_client`
     # from other tests
-    current_count = Teiserver.Account.count_non_bot_clients()
-    Config.update_site_config("system.User limit", current_count + n)
+    current_count = Account.count_non_bot_clients()
+    LoginThrottleServer.set_login_limit(current_count + n)
   end
 
-  defp oneshot_pid() do
+  defp oneshot_pid do
     parent = self()
 
     Task.async(fn ->

@@ -1,9 +1,10 @@
 defmodule Teiserver.OAuth.ApplicationTest do
-  use Teiserver.DataCase, async: true
   alias Teiserver.OAuth
+  alias Teiserver.TeiserverTestLib
+  use Teiserver.DataCase, async: true
 
   test "reject unknown scopes at creation" do
-    user = Teiserver.TeiserverTestLib.new_user()
+    user = TeiserverTestLib.new_user()
 
     assert {:error, changeset} =
              OAuth.create_application(%{
@@ -17,7 +18,7 @@ defmodule Teiserver.OAuth.ApplicationTest do
   end
 
   test "can retrieve an app by uid" do
-    user = Teiserver.TeiserverTestLib.new_user()
+    user = TeiserverTestLib.new_user()
 
     assert {:ok, expected_app} =
              OAuth.create_application(%{
@@ -31,7 +32,7 @@ defmodule Teiserver.OAuth.ApplicationTest do
   end
 
   test "delete app" do
-    user = Teiserver.TeiserverTestLib.new_user()
+    user = TeiserverTestLib.new_user()
 
     assert {:ok, expected_app} =
              OAuth.create_application(%{
@@ -60,12 +61,12 @@ defmodule Teiserver.OAuth.ApplicationTest do
   end
 
   test "get redirect uri" do
-    user = Teiserver.TeiserverTestLib.new_user()
+    user = TeiserverTestLib.new_user()
 
     {:ok, app} =
-      OAuth.create_application(
-        Map.put(valid_attrs(user), :redirect_uris, ["http://foo.bar/callback/path"])
-      )
+      valid_attrs(user)
+      |> Map.put(:redirect_uris, ["http://foo.bar/callback/path"])
+      |> OAuth.create_application()
 
     assert {:ok, uri} = OAuth.get_redirect_uri(app, "http://foo.bar/callback/path?state=xyz")
     # ensure query string is preserved
@@ -73,62 +74,67 @@ defmodule Teiserver.OAuth.ApplicationTest do
   end
 
   test "redirect uri validation" do
-    user = Teiserver.TeiserverTestLib.new_user()
+    user = TeiserverTestLib.new_user()
 
     {:ok, app} =
-      OAuth.create_application(
-        Map.put(valid_attrs(user), :redirect_uris, ["http://foo.bar/callback/path"])
-      )
+      valid_attrs(user)
+      |> Map.put(:redirect_uris, ["http://foo.bar/callback/path"])
+      |> OAuth.create_application()
 
     # fragments aren't allowed
-    assert {:error, _} = OAuth.get_redirect_uri(app, "http://foo.bar/callback/path#fragment")
+    assert {:error, _reason1} =
+             OAuth.get_redirect_uri(app, "http://foo.bar/callback/path#fragment")
 
-    assert {:error, _} = OAuth.get_redirect_uri(app, "http://another.host/callback/path")
-    assert {:error, _} = OAuth.get_redirect_uri(app, "http://foo.bar/different/path")
+    assert {:error, _reason2} = OAuth.get_redirect_uri(app, "http://another.host/callback/path")
+    assert {:error, _reason3} = OAuth.get_redirect_uri(app, "http://foo.bar/different/path")
   end
 
   test "validate the various ways to handle localhost" do
-    user = Teiserver.TeiserverTestLib.new_user()
+    user = TeiserverTestLib.new_user()
 
     {:ok, app} =
-      OAuth.create_application(
-        Map.put(valid_attrs(user), :redirect_uris, ["http://localhost/callback/path"])
-      )
+      valid_attrs(user)
+      |> Map.put(:redirect_uris, ["http://localhost/callback/path"])
+      |> OAuth.create_application()
 
-    assert {:ok, _} = OAuth.get_redirect_uri(app, "http://localhost/callback/path")
-    assert {:ok, _} = OAuth.get_redirect_uri(app, "http://localhost:7689/callback/path")
-    assert {:ok, _} = OAuth.get_redirect_uri(app, "http://127.0.0.1/callback/path")
-    assert {:ok, _} = OAuth.get_redirect_uri(app, "http://127.0.0.1:7689/callback/path")
-    assert {:ok, _} = OAuth.get_redirect_uri(app, "http://[::1]/callback/path")
-    assert {:ok, _} = OAuth.get_redirect_uri(app, "http://[::1]:7689/callback/path")
-    assert {:ok, _} = OAuth.get_redirect_uri(app, "http://[0:0:0:0:0:0:0:1]/callback/path")
-    assert {:ok, _} = OAuth.get_redirect_uri(app, "http://[0:0:0:0:0:0:0:1]:7689/callback/path")
+    assert {:ok, _uri1} = OAuth.get_redirect_uri(app, "http://localhost/callback/path")
+    assert {:ok, _uri2} = OAuth.get_redirect_uri(app, "http://localhost:7689/callback/path")
+    assert {:ok, _uri3} = OAuth.get_redirect_uri(app, "http://127.0.0.1/callback/path")
+    assert {:ok, _uri4} = OAuth.get_redirect_uri(app, "http://127.0.0.1:7689/callback/path")
+    assert {:ok, _uri5} = OAuth.get_redirect_uri(app, "http://[::1]/callback/path")
+    assert {:ok, _uri6} = OAuth.get_redirect_uri(app, "http://[::1]:7689/callback/path")
+    assert {:ok, _uri7} = OAuth.get_redirect_uri(app, "http://[0:0:0:0:0:0:0:1]/callback/path")
+
+    assert {:ok, _uri8} =
+             OAuth.get_redirect_uri(app, "http://[0:0:0:0:0:0:0:1]:7689/callback/path")
   end
 
   test "ignore ports for localhost only" do
-    user = Teiserver.TeiserverTestLib.new_user()
+    user = TeiserverTestLib.new_user()
 
     uri = URI.parse("http://some.host:7890/callback/path")
 
     {:ok, app} =
-      OAuth.create_application(Map.put(valid_attrs(user), :redirect_uris, [URI.to_string(uri)]))
+      valid_attrs(user)
+      |> Map.put(:redirect_uris, [uri |> URI.to_string()])
+      |> OAuth.create_application()
 
-    assert {:error, _} = OAuth.get_redirect_uri(app, "http://some.host:1234/callback/path")
-    assert {:ok, _} = OAuth.get_redirect_uri(app, "http://some.host:7890/callback/path")
+    assert {:error, _reason} = OAuth.get_redirect_uri(app, "http://some.host:1234/callback/path")
+    assert {:ok, _uri} = OAuth.get_redirect_uri(app, "http://some.host:7890/callback/path")
   end
 
   test "can validate against multiple registered uris" do
-    user = Teiserver.TeiserverTestLib.new_user()
+    user = TeiserverTestLib.new_user()
 
     {:ok, app} =
-      OAuth.create_application(
-        Map.put(valid_attrs(user), :redirect_uris, [
-          "http://some.host/callback",
-          "http://another.host/another/callback"
-        ])
-      )
+      valid_attrs(user)
+      |> Map.put(:redirect_uris, [
+        "http://some.host/callback",
+        "http://another.host/another/callback"
+      ])
+      |> OAuth.create_application()
 
-    assert {:ok, _} = OAuth.get_redirect_uri(app, "http://some.host/callback")
-    assert {:ok, _} = OAuth.get_redirect_uri(app, "http://another.host/another/callback")
+    assert {:ok, _uri1} = OAuth.get_redirect_uri(app, "http://some.host/callback")
+    assert {:ok, _uri2} = OAuth.get_redirect_uri(app, "http://another.host/another/callback")
   end
 end

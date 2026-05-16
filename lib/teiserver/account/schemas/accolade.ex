@@ -1,4 +1,8 @@
 defmodule Teiserver.Account.Accolade do
+  @moduledoc """
+  Accolade struct
+  """
+
   use TeiserverWeb, :schema
 
   typed_schema "teiserver_account_accolades" do
@@ -21,10 +25,11 @@ defmodule Teiserver.Account.Accolade do
     struct
     |> cast(params, ~w(recipient_id giver_id badge_type_id match_id inserted_at)a)
     |> validate_required(~w(recipient_id giver_id inserted_at)a)
-    # In theory this will never be needed because the value is nullable but sometimes the tests break so we have it here
+    # In theory this will never be needed because the value
+    # is nullable but sometimes the tests break so we have it here
     |> foreign_key_constraint(:badge_type_id)
   end
 
   @spec authorize(atom(), Plug.Conn.t(), map()) :: bool()
-  def authorize(_, conn, _), do: allow?(conn, "Moderator")
+  def authorize(_action, conn, _data), do: allow?(conn, "Moderator")
 end

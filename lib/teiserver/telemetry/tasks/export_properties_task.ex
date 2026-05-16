@@ -1,8 +1,10 @@
 defmodule Teiserver.Telemetry.ExportPropertiesTask do
   @moduledoc false
-  alias Teiserver.Helper.{TimexHelper, DatePresets}
-  alias Teiserver.Telemetry.{UserProperty, AnonProperty}
+  alias Teiserver.Helper.DatePresets
+  alias Teiserver.Helper.TimexHelper
   alias Teiserver.Repo
+  alias Teiserver.Telemetry.AnonProperty
+  alias Teiserver.Telemetry.UserProperty
   import Ecto.Query, warn: false
   import Teiserver.Helper.QueryHelpers
 

@@ -1,10 +1,12 @@
 defmodule TeiserverWeb.Account.RelationshipLive.Index do
   @moduledoc false
-  alias Teiserver.Account.RelationshipLib
-  use TeiserverWeb, :live_view
-  alias Teiserver.Account
 
-  @impl true
+  alias Teiserver.Account
+  alias Teiserver.Account.RelationshipLib
+  alias Teiserver.Account.RoleLib
+  use TeiserverWeb, :live_view
+
+  @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     socket =
       socket
@@ -19,7 +21,7 @@ defmodule TeiserverWeb.Account.RelationshipLive.Index do
     {:ok, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_params(params, _url, socket) do
     {:noreply, apply_action(socket, socket.assigns.live_action, params)}
   end
@@ -52,7 +54,7 @@ defmodule TeiserverWeb.Account.RelationshipLive.Index do
     socket
     |> assign(:page_title, "Relationships - Player search")
     |> assign(:tab, :search)
-    |> assign(:role_data, Account.RoleLib.role_data())
+    |> assign(:role_data, RoleLib.role_data())
     |> put_empty_relationships()
     |> update_user_search()
   end
@@ -65,12 +67,12 @@ defmodule TeiserverWeb.Account.RelationshipLive.Index do
     |> get_inactive_relationship_count()
   end
 
-  @impl true
-  def handle_event("show-help", _, socket) do
+  @impl Phoenix.LiveView
+  def handle_event("show-help", _params, socket) do
     {:noreply, socket |> assign(:show_help, true)}
   end
 
-  def handle_event("hide-help", _, socket) do
+  def handle_event("hide-help", _params, socket) do
     {:noreply, socket |> assign(:show_help, false)}
   end
 
@@ -211,7 +213,7 @@ defmodule TeiserverWeb.Account.RelationshipLive.Index do
 
     socket =
       case Account.ignore_user(socket.assigns.current_user.id, userid) do
-        {:ok, _} ->
+        {:ok, _result} ->
           username = Account.get_username_by_id(userid)
 
           socket
@@ -247,7 +249,7 @@ defmodule TeiserverWeb.Account.RelationshipLive.Index do
 
     socket =
       case Account.avoid_user(socket.assigns.current_user.id, userid) do
-        {:ok, _} ->
+        {:ok, _result} ->
           username = Account.get_username_by_id(userid)
 
           socket
@@ -268,7 +270,7 @@ defmodule TeiserverWeb.Account.RelationshipLive.Index do
 
     socket =
       case Account.block_user(socket.assigns.current_user.id, userid) do
-        {:ok, _} ->
+        {:ok, _result} ->
           username = Account.get_username_by_id(userid)
 
           socket
@@ -320,7 +322,7 @@ defmodule TeiserverWeb.Account.RelationshipLive.Index do
   @doc """
   Handles the dropdown for purge cutoff time
   """
-  @impl true
+  @impl Phoenix.LiveView
   def handle_event("update-purge-cutoff", event, socket) do
     [key] = event["_target"]
     value = event[key]
@@ -508,17 +510,17 @@ defmodule TeiserverWeb.Account.RelationshipLive.Index do
     |> assign(:blocks, blocks)
   end
 
-  def get_purge_cutoff_options() do
+  def get_purge_cutoff_options do
     ["1 month", "3 months", "6 months", "1 year"]
   end
 
-  def get_default_purge_cutoff_option() do
+  def get_default_purge_cutoff_option do
     "6 months"
   end
 
   @spec get_purge_days_cutoff(String.t()) :: float()
   def get_purge_days_cutoff(duration) do
-    with [_, raw_number, type] <- Regex.run(~r/(\d)+ (month|year)/, duration),
+    with [_full_match, raw_number, type] <- Regex.run(~r/(\d)+ (month|year)/, duration),
          {number, ""} <- Integer.parse(raw_number) do
       cond do
         type == "year" ->
@@ -529,7 +531,7 @@ defmodule TeiserverWeb.Account.RelationshipLive.Index do
       end
     else
       nil -> {:error, "invalid duration passed: #{duration}"}
-      {_, _rest} -> {:error, "invalid number in duration #{duration}"}
+      {_number, _rest} -> {:error, "invalid number in duration #{duration}"}
     end
   end
 

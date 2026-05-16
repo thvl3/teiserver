@@ -68,8 +68,8 @@ defmodule TeiserverWeb do
 
       alias Teiserver.Helper.ColourHelper
       import Teiserver.Helper.ColourHelper, only: [rgba_css: 1, rgba_css: 2]
-      import Central.Helpers.InputHelper
-      import Central.Helpers.ComponentHelper
+      import Teiserver.Helpers.InputHelper
+      import Teiserver.Helpers.ComponentHelper
       import Teiserver.Helper.TimexHelper
 
       import Teiserver.Config, only: [get_user_config_cache: 2, get_site_config_cache: 1]
@@ -182,8 +182,8 @@ defmodule TeiserverWeb do
 
       import Teiserver.Helper.QueryHelpers
       import Teiserver.Account.AuthLib, only: [allow?: 2, allow_any?: 2]
-      alias Teiserver.Helper.StylingHelper
       alias Teiserver.Data.Types, as: T
+      alias Teiserver.Helper.StylingHelper
     end
   end
 
@@ -192,7 +192,8 @@ defmodule TeiserverWeb do
       alias Teiserver.Data.Types, as: T
       alias Teiserver.Repo
       import Teiserver.Account.AuthLib, only: [allow?: 2, allow_any?: 2]
-      alias Teiserver.Helper.{QueryHelpers, StylingHelper}
+      alias Teiserver.Helper.QueryHelpers
+      alias Teiserver.Helper.StylingHelper
     end
   end
 

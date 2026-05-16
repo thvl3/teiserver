@@ -3,15 +3,18 @@ defmodule TeiserverWeb.Tachyon.PartyMatchmakingTest do
   Special tests for party and matchmaking interactions.
   Assumes the basics of parties and matchmaking are working already
   """
-  use Teiserver.DataCase
-  alias Teiserver.Support.Tachyon
+
+  alias Teiserver.Asset
   alias Teiserver.AssetFixtures
-  alias Teiserver.Matchmaking.{QueueSupervisor, QueueServer}
+  alias Teiserver.Matchmaking.QueueServer
+  alias Teiserver.Matchmaking.QueueSupervisor
+  alias Teiserver.Support.Tachyon
+  use Teiserver.DataCase
 
   @moduletag :wip
 
   test "all members join matchmaking" do
-    {_party_id, [m1, m2], _} = setup_party(2, 0)
+    {_party_id, [m1, m2], _invited} = setup_party(2, 0)
     [q1, q2] = [setup_queue(2), setup_queue(3)]
 
     assert %{"status" => "success"} =
@@ -27,8 +30,8 @@ defmodule TeiserverWeb.Tachyon.PartyMatchmakingTest do
   end
 
   test "parties are matched together" do
-    {_party_id, [m1, m2], _} = setup_party(2, 0)
-    {_party_id, [m3, m4], _} = setup_party(2, 0)
+    {_party_id1, [m1, m2], _invited1} = setup_party(2, 0)
+    {_party_id2, [m3, m4], _invited2} = setup_party(2, 0)
     [q1] = [setup_queue(2)]
 
     assert %{"status" => "success"} =
@@ -49,7 +52,7 @@ defmodule TeiserverWeb.Tachyon.PartyMatchmakingTest do
   end
 
   test "cannot join queues too small" do
-    {_party_id, [m1, m2], _} = setup_party(2, 0)
+    {_party_id, [m1, m2], _invited} = setup_party(2, 0)
     [q1] = [setup_queue(1)]
 
     assert %{"status" => "failed", "reason" => "invalid_request"} =
@@ -59,7 +62,7 @@ defmodule TeiserverWeb.Tachyon.PartyMatchmakingTest do
   end
 
   test "one member leaving matchmaking makes all member leave mm" do
-    {_party_id, [m1, m2], _} = setup_party(2, 0)
+    {_party_id, [m1, m2], _invited} = setup_party(2, 0)
     [q1, q2] = [setup_queue(2), setup_queue(3)]
 
     assert %{"status" => "success"} =
@@ -75,7 +78,7 @@ defmodule TeiserverWeb.Tachyon.PartyMatchmakingTest do
   end
 
   test "one member leaving the party makes all member leave mm" do
-    {_party_id, [m1, m2], _} = setup_party(2, 0)
+    {_party_id, [m1, m2], _invited} = setup_party(2, 0)
     [q1, q2] = [setup_queue(2), setup_queue(3)]
 
     assert %{"status" => "success"} =
@@ -114,7 +117,7 @@ defmodule TeiserverWeb.Tachyon.PartyMatchmakingTest do
   end
 
   test "cannot invite when in matchmaking" do
-    {_party_id, [m1, _m2], _} = setup_party(2, 0)
+    {_party_id, [m1, _m2], _invited} = setup_party(2, 0)
     [q1] = [setup_queue(2)]
 
     invited = setup_client()
@@ -139,7 +142,7 @@ defmodule TeiserverWeb.Tachyon.PartyMatchmakingTest do
   end
 
   test "leave matchmaking when entering a party" do
-    {party_id, [founder], _} = setup_party(1, 0)
+    {party_id, [founder], _invited} = setup_party(1, 0)
     [q1] = [setup_queue(2)]
     to_invite = setup_client()
 
@@ -159,7 +162,7 @@ defmodule TeiserverWeb.Tachyon.PartyMatchmakingTest do
   end
 
   test "queue crash reset party matchmaking state" do
-    {_party_id, [m1, m2], _} = setup_party(2, 0)
+    {_party_id, [m1, m2], _invited} = setup_party(2, 0)
     [q1, q2] = [setup_queue(2), setup_queue(3)]
 
     assert %{"status" => "success"} =
@@ -185,7 +188,7 @@ defmodule TeiserverWeb.Tachyon.PartyMatchmakingTest do
     members =
       if n_members > 1 do
         rest =
-          Enum.map(1..(n_members - 1), fn _ -> setup_client() end)
+          Enum.map(1..(n_members - 1), fn _i -> setup_client() end)
 
         [founder | rest]
       else
@@ -203,13 +206,15 @@ defmodule TeiserverWeb.Tachyon.PartyMatchmakingTest do
       :ok = Tachyon.send_request(m.client, "party/acceptInvite", %{partyId: party_id})
     end
 
-    Task.await_many(Enum.map(members, fn m -> Task.async(fn -> Tachyon.drain(m.client) end) end))
+    members
+    |> Enum.map(fn m -> Task.async(fn -> Tachyon.drain(m.client) end) end)
+    |> Task.await_many()
 
     invited =
       if n_invited == 0 do
         []
       else
-        Enum.map(1..n_invited, fn _ ->
+        Enum.map(1..n_invited, fn _i ->
           ctx = setup_client()
 
           assert %{"status" => "success"} =
@@ -219,9 +224,9 @@ defmodule TeiserverWeb.Tachyon.PartyMatchmakingTest do
         end)
       end
 
-    Task.await_many(
-      Enum.map(members ++ invited, fn m -> Task.async(fn -> Tachyon.drain(m.client) end) end)
-    )
+    (members ++ invited)
+    |> Enum.map(fn m -> Task.async(fn -> Tachyon.drain(m.client) end) end)
+    |> Task.await_many()
 
     {party_id, members, invited}
   end
@@ -246,7 +251,7 @@ defmodule TeiserverWeb.Tachyon.PartyMatchmakingTest do
       settings: %{tick_interval_ms: :manual, max_distance: 15},
       engines: [%{version: "2025.04.01"}],
       games: [%{spring_game: "BAR-27948-17aa95a"}],
-      maps: Teiserver.Asset.get_maps_for_queue(queue_id)
+      maps: Asset.get_maps_for_queue(queue_id)
     }
 
     state = QueueServer.init_state(map_attrs)
@@ -256,7 +261,7 @@ defmodule TeiserverWeb.Tachyon.PartyMatchmakingTest do
     %{id: queue_id, pid: pid, version: version}
   end
 
-  defp setup_client() do
+  defp setup_client do
     {:ok, args} = Tachyon.setup_client()
     Map.new(args)
   end

@@ -7,10 +7,11 @@ defmodule Teiserver.Matchmaking.Algo.BruteforceFilter do
   each member of the team.
   """
 
-  alias Teiserver.Matchmaking.{Algos, Member}
+  alias Teiserver.Matchmaking.Algos
+  alias Teiserver.Matchmaking.Member
   @behaviour Algos
 
-  @impl true
+  @impl Teiserver.Matchmaking.Algos
   def init(team_size, team_count) do
     %{
       team_size: team_size,
@@ -18,7 +19,7 @@ defmodule Teiserver.Matchmaking.Algo.BruteforceFilter do
     }
   end
 
-  @impl true
+  @impl Teiserver.Matchmaking.Algos
   def get_matches(members, st) do
     case Algos.match_members(members, st.team_size, st.team_count, &filter_within_bounds/1) do
       [] -> :no_match
@@ -37,7 +38,9 @@ defmodule Teiserver.Matchmaking.Algo.BruteforceFilter do
 
     predictions = Openskill.predict_win(team_skills)
 
-    Enum.all?(Enum.zip(match, predictions), fn {team, win_pred} ->
+    match
+    |> Enum.zip(predictions)
+    |> Enum.all?(fn {team, win_pred} ->
       Enum.all?(team, fn member ->
         {lo, hi} = acceptable_win_proba(member)
         win_pred >= lo && win_pred <= hi
@@ -49,7 +52,6 @@ defmodule Teiserver.Matchmaking.Algo.BruteforceFilter do
   # we could also stretch it if the member's skill is at one extreme of
   # the distribution
   defp acceptable_win_proba(%Member{} = _member) do
-    # credo:disable-for-next-line Credo.Check.Design.TagTODO
     # TODO: actually do something based on the member
     {0.3, 0.7}
   end

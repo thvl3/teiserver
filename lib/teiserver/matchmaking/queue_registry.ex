@@ -7,7 +7,7 @@ defmodule Teiserver.Matchmaking.QueueRegistry do
 
   alias Teiserver.Matchmaking.QueueServer
 
-  def start_link() do
+  def start_link do
     Horde.Registry.start_link(keys: :unique, members: :auto, name: __MODULE__)
   end
 
@@ -34,13 +34,13 @@ defmodule Teiserver.Matchmaking.QueueRegistry do
   @spec lookup(QueueServer.id()) :: pid() | nil
   def lookup(queue_id) do
     case Horde.Registry.lookup(__MODULE__, queue_id) do
-      [{pid, _}] -> pid
-      _ -> nil
+      [{pid, _value}] -> pid
+      _other -> nil
     end
   end
 
   @spec list() :: [{QueueServer.id(), QueueServer.queue()}]
-  def list() do
+  def list do
     Horde.Registry.select(__MODULE__, [{{:"$1", :_, :"$2"}, [], [{{:"$1", :"$2"}}]}])
   end
 

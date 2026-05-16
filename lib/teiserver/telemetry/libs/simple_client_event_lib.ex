@@ -1,17 +1,19 @@
 defmodule Teiserver.Telemetry.SimpleClientEventLib do
   @moduledoc false
-  use TeiserverWeb, :library_newform
-  alias Teiserver.Telemetry
-  alias Teiserver.Telemetry.{SimpleClientEvent, SimpleClientEventQueries}
+
   alias Phoenix.PubSub
+  alias Teiserver.Telemetry
+  alias Teiserver.Telemetry.SimpleClientEvent
+  alias Teiserver.Telemetry.SimpleClientEventQueries
+  use TeiserverWeb, :library_newform
 
   @broadcast_event_types ~w(game_start:singleplayer:scenario_end)
 
   @spec colour :: atom
-  def colour(), do: :info2
+  def colour, do: :info2
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-grip-lines"
+  def icon, do: "fa-grip-lines"
 
   @spec log_simple_client_event(T.userid(), String.t()) ::
           {:error, Ecto.Changeset} | {:ok, SimpleClientEvent}
@@ -41,7 +43,7 @@ defmodule Teiserver.Telemetry.SimpleClientEventLib do
 
         result
 
-      _ ->
+      _error ->
         result
     end
   end

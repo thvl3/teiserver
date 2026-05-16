@@ -1,11 +1,10 @@
 defmodule Teiserver.Lobby.CommandLib do
-  @moduledoc """
+  @moduledoc false
 
-  """
-
-  alias Teiserver.{Account, Battle}
-  alias Teiserver.Lobby.ChatLib
+  alias Teiserver.Account
+  alias Teiserver.Battle
   alias Teiserver.Data.Types, as: T
+  alias Teiserver.Lobby.ChatLib
   require Logger
 
   @spec handle_command(T.lobby_server_state(), T.userid(), String.t()) :: T.lobby_server_state()
@@ -33,7 +32,7 @@ defmodule Teiserver.Lobby.CommandLib do
   end
 
   @spec cache_lobby_commands() :: :ok
-  def cache_lobby_commands() do
+  def cache_lobby_commands do
     {:ok, module_list} = :application.get_key(:teiserver, :modules)
 
     lookup =

@@ -1,24 +1,24 @@
 defmodule Teiserver.Logging.AggregateViewLogsTask do
   @moduledoc false
 
-  use Oban.Worker, queue: :logging
-
+  alias Decimal
   alias Teiserver.Logging
   alias Teiserver.Logging.AggregateViewLog
   alias Teiserver.Logging.PageViewLogLib
-
   alias Teiserver.Repo
+
+  use Oban.Worker, queue: :logging
+
   import Ecto.Query, warn: false
-  import Teiserver.Helper.QueryHelpers
   import Teiserver.Helper.NumberHelper, only: [c_round: 1]
-  alias Decimal
+  import Teiserver.Helper.QueryHelpers
 
   @log_keep_period 180
   # Oban.insert(Teiserver.Logging.AggregateViewLogsTask.new(%{}))
   # Teiserver.Logging.AggregateViewLogsTask.run(Timex.today() |> Timex.shift(days: -1))
 
   @impl Oban.Worker
-  def perform(_) do
+  def perform(_job) do
     last_date = Logging.get_last_aggregate_date()
 
     date =
@@ -37,7 +37,7 @@ defmodule Teiserver.Logging.AggregateViewLogsTask do
 
       if Timex.compare(new_date, Timex.today()) == -1 do
         %{}
-        |> Teiserver.Logging.AggregateViewLogsTask.new()
+        |> __MODULE__.new()
         |> Oban.insert()
       end
     end

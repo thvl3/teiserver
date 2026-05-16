@@ -3,12 +3,25 @@ defmodule Mix.Tasks.Teiserver.Fakedata do
   Run with mix teiserver.fakedata
   """
 
+  alias Ecto.Multi
+  alias Teiserver.Account
+  alias Teiserver.Account.User
+  alias Teiserver.Battle
+  alias Teiserver.Battle.MatchLib
+  alias Teiserver.Battle.MatchMembership
+  alias Teiserver.Config
+  alias Teiserver.Game.MatchRatingLib
+  alias Teiserver.Helper.StylingHelper
+  alias Teiserver.Logging.ServerMinuteLog
+  alias Teiserver.Logging.Tasks.PersistMatchDayTask
+  alias Teiserver.Logging.Tasks.PersistMatchMonthTask
+  alias Teiserver.Logging.Tasks.PersistServerDayTask
+  alias Teiserver.Logging.Tasks.PersistServerMonthTask
+  alias Teiserver.Moderation.Report
+  alias Teiserver.Repo
+
   use Mix.Task
 
-  alias Teiserver.{Account, Logging, Battle, Moderation}
-  alias Teiserver.Helper.StylingHelper
-  alias Teiserver.Battle.MatchLib
-  alias Teiserver.Game.MatchRatingLib
   require Logger
 
   @settings %{
@@ -48,7 +61,7 @@ defmodule Mix.Tasks.Teiserver.Fakedata do
     )
   end
 
-  defp add_root_user() do
+  defp add_root_user do
     {:ok, user} =
       Account.create_user(%{
         name: "root",
@@ -82,14 +95,14 @@ defmodule Mix.Tasks.Teiserver.Fakedata do
     |> Enum.map_join(" ", fn l -> Enum.random(l) |> String.capitalize() end)
   end
 
-  defp make_accounts() do
+  defp make_accounts do
     root_user = add_root_user()
 
     new_users =
       Range.new(0, @settings.days)
       |> ParallelStream.map(fn day ->
         Range.new(0, users_per_day())
-        |> ParallelStream.map(fn _ ->
+        |> ParallelStream.map(fn _index ->
           minutes = :rand.uniform(24 * 60)
 
           %{
@@ -102,8 +115,7 @@ defmodule Mix.Tasks.Teiserver.Fakedata do
             roles: ["Verified"],
             data: %{
               lobby_client: "FakeData",
-              bot: false,
-              roles: ["Verified"]
+              bot: false
             },
             inserted_at:
               Timex.shift(Timex.now(), days: -day, minutes: -minutes) |> time_convert(),
@@ -115,12 +127,12 @@ defmodule Mix.Tasks.Teiserver.Fakedata do
       |> Enum.to_list()
       |> List.flatten()
 
-    Ecto.Multi.new()
-    |> Ecto.Multi.insert_all(:insert_all, Teiserver.Account.User, new_users)
-    |> Teiserver.Repo.transaction()
+    Multi.new()
+    |> Multi.insert_all(:insert_all, User, new_users)
+    |> Repo.transaction()
   end
 
-  defp make_telemetry() do
+  defp make_telemetry do
     # First we need to make by the minute telemetry data
     Range.new(0, @settings.days)
     |> Enum.each(fn day ->
@@ -207,16 +219,16 @@ defmodule Mix.Tasks.Teiserver.Fakedata do
           }
         end)
 
-      Ecto.Multi.new()
-      |> Ecto.Multi.insert_all(:insert_all, Teiserver.Logging.ServerMinuteLog, logs)
-      |> Teiserver.Repo.transaction()
+      Multi.new()
+      |> Multi.insert_all(:insert_all, ServerMinuteLog, logs)
+      |> Repo.transaction()
     end)
 
     # Now persist day values
     Range.new(0, @settings.days)
     |> Enum.each(fn _day ->
-      Logging.Tasks.PersistServerDayTask.perform(%{})
-      Logging.Tasks.PersistMatchDayTask.perform(%{})
+      PersistServerDayTask.perform(%{})
+      PersistMatchDayTask.perform(%{})
     end)
 
     # And monthly
@@ -224,12 +236,12 @@ defmodule Mix.Tasks.Teiserver.Fakedata do
 
     Range.new(0, months)
     |> Enum.each(fn _day ->
-      Logging.Tasks.PersistServerMonthTask.perform(%{})
-      Logging.Tasks.PersistMatchMonthTask.perform(%{})
+      PersistServerMonthTask.perform(%{})
+      PersistMatchMonthTask.perform(%{})
     end)
   end
 
-  defp make_moderation() do
+  defp make_moderation do
     Range.new(0, @settings.days)
     |> Enum.each(fn day ->
       date = Timex.today() |> Timex.shift(days: -day)
@@ -248,9 +260,10 @@ defmodule Mix.Tasks.Teiserver.Fakedata do
 
       basic_reports =
         Range.new(0, report_count)
-        |> Enum.map(fn _ ->
+        |> Enum.map(fn _index ->
           if Enum.count(users) > 1 do
-            [{reporter_id, _}, {target_id, _} | _] = Enum.shuffle(users) |> Enum.take(2)
+            [{reporter_id, _name1}, {target_id, _name2} | _rest] =
+              Enum.shuffle(users) |> Enum.take(2)
 
             report_time =
               date
@@ -281,7 +294,7 @@ defmodule Mix.Tasks.Teiserver.Fakedata do
         |> Enum.shuffle()
         |> Enum.take(report_count)
         |> Enum.map(fn match ->
-          [reporter, target | _] = Enum.shuffle(match.members) |> Enum.take(2)
+          [reporter, target | _rest] = Enum.shuffle(match.members) |> Enum.take(2)
           report_time = match.started |> Timex.shift(minutes: 20) |> time_convert()
 
           relationship =
@@ -302,13 +315,13 @@ defmodule Mix.Tasks.Teiserver.Fakedata do
           }
         end)
 
-      Ecto.Multi.new()
-      |> Ecto.Multi.insert_all(:insert_all, Moderation.Report, basic_reports ++ match_reports)
-      |> Teiserver.Repo.transaction()
+      Multi.new()
+      |> Multi.insert_all(:insert_all, Report, basic_reports ++ match_reports)
+      |> Repo.transaction()
     end)
   end
 
-  defp make_matches() do
+  defp make_matches do
     match_ids =
       Range.new(0, @settings.days)
       |> Enum.flat_map(fn day ->
@@ -329,7 +342,7 @@ defmodule Mix.Tasks.Teiserver.Fakedata do
         server_uuid = UUID.uuid1()
 
         Range.new(0, matches_per_day())
-        |> Enum.map(fn _ ->
+        |> Enum.map(fn _index ->
           max_size = Enum.count(users) |> Kernel.div(2) |> :math.floor() |> round()
           team_size = min(:rand.uniform(8), max_size)
           shuffled_users = Enum.shuffle(users)
@@ -341,15 +354,17 @@ defmodule Mix.Tasks.Teiserver.Fakedata do
 
           team1_score =
             team1
-            |> Enum.map(fn {_, name} -> String.length(name) end)
+            |> Enum.map(fn {_userid, name} -> String.length(name) end)
             |> Enum.sum()
 
           team2_score =
             team2
-            |> Enum.map(fn {_, name} -> String.length(name) end)
+            |> Enum.map(fn {_userid, name} -> String.length(name) end)
             |> Enum.sum()
 
-          start_time = Timex.shift(date |> Timex.to_datetime(), minutes: 10 + :rand.uniform(1000))
+          start_time =
+            date |> Timex.to_datetime() |> Timex.shift(minutes: 10 + :rand.uniform(1000))
+
           end_time = Timex.shift(start_time, minutes: 10 + :rand.uniform(120))
 
           {:ok, match} =
@@ -376,18 +391,10 @@ defmodule Mix.Tasks.Teiserver.Fakedata do
 
           memberships1 =
             team1
-            |> Enum.map(fn {userid, _} ->
+            |> Enum.map(fn {userid, _name} ->
               %{
                 team_id: 0,
                 win: match.winning_team == 0,
-                stats: %{
-                  "damageDealt" => :rand.uniform(1000) * 10,
-                  "damageReceived" => :rand.uniform(1000) * 10,
-                  "metalProduced" => :rand.uniform(1000) * 100,
-                  "metalUsed" => :rand.uniform(1000) * 100,
-                  "energyProduced" => :rand.uniform(1000) * 1000,
-                  "energyUsed" => :rand.uniform(1000) * 1000
-                },
                 party_id: get_party_id(num_players),
                 user_id: userid,
                 match_id: match.id
@@ -396,47 +403,39 @@ defmodule Mix.Tasks.Teiserver.Fakedata do
 
           memberships2 =
             team2
-            |> Enum.map(fn {userid, _} ->
+            |> Enum.map(fn {userid, _name} ->
               %{
                 team_id: 1,
                 win: match.winning_team == 1,
-                stats: %{
-                  "damageDealt" => :rand.uniform(1000) * 10,
-                  "damageReceived" => :rand.uniform(1000) * 10,
-                  "metalProduced" => :rand.uniform(1000) * 100,
-                  "metalUsed" => :rand.uniform(1000) * 100,
-                  "energyProduced" => :rand.uniform(1000) * 1000,
-                  "energyUsed" => :rand.uniform(1000) * 1000
-                },
                 party_id: get_party_id(num_players),
                 user_id: userid,
                 match_id: match.id
               }
             end)
 
-          Ecto.Multi.new()
-          |> Ecto.Multi.insert_all(
+          Multi.new()
+          |> Multi.insert_all(
             :insert_all,
-            Battle.MatchMembership,
+            MatchMembership,
             memberships1 ++ memberships2
           )
-          |> Teiserver.Repo.transaction()
+          |> Repo.transaction()
 
           match.id
         end)
       end)
 
-    Teiserver.Game.MatchRatingLib.re_rate_specific_matches(match_ids)
+    MatchRatingLib.re_rate_specific_matches(match_ids)
   end
 
   defp set_active_season(season) do
-    Teiserver.Config.update_site_config("rating.Season", season)
+    Config.update_site_config("rating.Season", season)
   end
 
-  defp make_one_time_code() do
+  defp make_one_time_code do
     root_user = Account.get_user_by_email("root@localhost")
 
-    Teiserver.Config.update_site_config("user.Enable one time links", "true")
+    Config.update_site_config("user.Enable one time links", "true")
 
     {:ok, _code} =
       Account.create_code(%{
@@ -457,14 +456,14 @@ defmodule Mix.Tasks.Teiserver.Fakedata do
 
   defp random_pick_from(list, chance \\ 0.5) do
     list
-    |> Enum.filter(fn _ ->
+    |> Enum.filter(fn _element ->
       :rand.uniform() < chance
     end)
   end
 
   # Adds a party id or nil
   defp get_party_id(num_players) do
-    case is_in_party?() do
+    case in_party?() do
       true ->
         num_parties = trunc(num_players / 4)
         # party id is a string
@@ -475,7 +474,7 @@ defmodule Mix.Tasks.Teiserver.Fakedata do
     end
   end
 
-  defp is_in_party? do
+  defp in_party? do
     chance_in_party = 40
     # Number from 0 to 100
     random = Enum.random(0..100)

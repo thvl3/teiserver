@@ -3,9 +3,13 @@ defmodule Teiserver.Account.PermissionCache do
   Define caches and set them up for permission related things
   """
 
-  use Supervisor
-  import Teiserver.Account.AuthLib, only: [add_permission_set: 3]
+  alias Teiserver.Account.UserLib
   alias Teiserver.Helpers.CacheHelper
+  alias Teiserver.Logging.Startup
+
+  use Supervisor
+
+  import Teiserver.Account.AuthLib, only: [add_permission_set: 3]
 
   def start_link(opts) do
     with {:ok, sup} <- Supervisor.start_link(__MODULE__, :ok, opts),
@@ -15,7 +19,7 @@ defmodule Teiserver.Account.PermissionCache do
     end
   end
 
-  @impl true
+  @impl Supervisor
   def init(:ok) do
     children = [
       CacheHelper.concache_perm_sup(:auth_group_store),
@@ -25,19 +29,19 @@ defmodule Teiserver.Account.PermissionCache do
     Supervisor.init(children, strategy: :one_for_all)
   end
 
-  defp warm_permission_cache() do
+  defp warm_permission_cache do
     add_permission_set("admin", "debug", ~w(debug))
     add_permission_set("admin", "dev", ~w(developer structure))
     add_permission_set("admin", "admin", ~w(limited full))
     add_permission_set("admin", "report", ~w(show update delete report))
     add_permission_set("admin", "user", ~w(show create update delete report))
     add_permission_set("admin", "group", ~w(show create update delete report config))
-    add_permission_set("teiserver", "admin", ~w(account battle clan queue))
+    add_permission_set("teiserver", "admin", ~w(account battle queue))
 
     add_permission_set(
       "teiserver",
       "staff",
-      ~w(overwatch reviewer moderator admin communication clan telemetry server)
+      ~w(overwatch reviewer moderator admin communication telemetry server)
     )
 
     add_permission_set("teiserver", "dev", ~w(infolog))
@@ -50,14 +54,14 @@ defmodule Teiserver.Account.PermissionCache do
       ~w(account tester contributor dev streamer donor verified bot moderator)
     )
 
-    :ok = Teiserver.Logging.Startup.startup()
+    :ok = Startup.startup()
 
     :ok
   end
 
-  defp warm_restriction_cache() do
+  defp warm_restriction_cache do
     # Chat stuff
-    Teiserver.Account.UserLib.add_report_restriction_types("Chat", [
+    UserLib.add_report_restriction_types("Chat", [
       "Bridging",
       "Game chat",
       "Room chat",
@@ -65,14 +69,14 @@ defmodule Teiserver.Account.PermissionCache do
     ])
 
     # Lobby interaction
-    Teiserver.Account.UserLib.add_report_restriction_types("Game", [
+    UserLib.add_report_restriction_types("Game", [
       "Low priority",
       "All lobbies",
       "Login",
       "Permanently banned"
     ])
 
-    Teiserver.Account.UserLib.add_report_restriction_types("Other", [
+    UserLib.add_report_restriction_types("Other", [
       "Accolades",
       "Boss",
       "Reporting",
@@ -80,11 +84,11 @@ defmodule Teiserver.Account.PermissionCache do
       "Matchmaking"
     ])
 
-    Teiserver.Account.UserLib.add_report_restriction_types("Warnings", [
+    UserLib.add_report_restriction_types("Warnings", [
       "Warning reminder"
     ])
 
-    Teiserver.Account.UserLib.add_report_restriction_types("Internal", [
+    UserLib.add_report_restriction_types("Internal", [
       "Note"
     ])
   end

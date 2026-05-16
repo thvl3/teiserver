@@ -1,12 +1,14 @@
 defmodule TeiserverWeb.Admin.TextCallbackController do
-  use TeiserverWeb, :controller
-
-  alias Teiserver.{Communication, Logging, Account}
+  alias Teiserver.Account
+  alias Teiserver.Communication
   alias Teiserver.Communication.TextCallbackLib
-  import Teiserver.Helper.StringHelper, only: [convert_textarea_to_array: 1]
   alias Teiserver.Helper.StylingHelper
+  alias Teiserver.Logging
+  use TeiserverWeb, :controller
+  import Teiserver.Helper.StringHelper, only: [convert_textarea_to_array: 1]
 
   plug Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Communication.TextCallback,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}
@@ -85,7 +87,7 @@ defmodule TeiserverWeb.Admin.TextCallbackController do
 
     conn
     |> assign(:changeset, changeset)
-    |> add_breadcrumb(name: "New lobby policy", url: conn.request_path)
+    |> add_breadcrumb(name: "New lobby text callback", url: conn.request_path)
     |> render("new.html")
   end
 
@@ -103,7 +105,7 @@ defmodule TeiserverWeb.Admin.TextCallbackController do
     case Communication.create_text_callback(text_callback_params) do
       {:ok, _text_callback} ->
         conn
-        |> put_flash(:info, "Lobby policy created successfully.")
+        |> put_flash(:info, "Text callback created successfully.")
         |> redirect(to: ~p"/admin/text_callbacks/")
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -142,7 +144,7 @@ defmodule TeiserverWeb.Admin.TextCallbackController do
     case Communication.update_text_callback(text_callback, text_callback_params) do
       {:ok, _text_callback} ->
         conn
-        |> put_flash(:info, "Lobby policy updated successfully.")
+        |> put_flash(:info, "Text callback updated successfully.")
         |> redirect(to: ~p"/admin/text_callbacks")
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -164,7 +166,7 @@ defmodule TeiserverWeb.Admin.TextCallbackController do
     {:ok, _text_callback} = Communication.delete_text_callback(text_callback)
 
     conn
-    |> put_flash(:info, "Lobby policy deleted successfully.")
+    |> put_flash(:info, "Text callback deleted successfully.")
     |> redirect(to: ~p"/admin/text_callbacks")
   end
 end

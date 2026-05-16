@@ -1,20 +1,23 @@
 defmodule Teiserver.Telemetry.AnonPropertyTest do
   @moduledoc false
+
+  alias Ecto.Adapters.SQL
+  alias ExULID.ULID
+  alias Teiserver.Telemetry
   use Teiserver.DataCase
-  alias Teiserver.{Telemetry}
 
   test "anon properties" do
     r = :rand.uniform(999_999_999)
-    hash = ExULID.ULID.generate()
+    hash = ULID.generate()
 
     # Start by removing all anon properties
     query = "DELETE FROM telemetry_anon_properties;"
-    Ecto.Adapters.SQL.query(Repo, query, [])
+    SQL.query(Repo, query, [])
 
     assert Telemetry.list_anon_properties() |> Enum.count() == 0
 
     # Log the property
-    {result, _} = Telemetry.log_anon_property(hash, "anon.anon_property-#{r}", "value")
+    {result, _property} = Telemetry.log_anon_property(hash, "anon.anon_property-#{r}", "value")
 
     assert result == :ok
 
@@ -32,7 +35,8 @@ defmodule Teiserver.Telemetry.AnonPropertyTest do
     assert Enum.member?(type_list, "anon.anon_property-#{r}")
 
     # Now try updating it
-    {result, _} = Telemetry.log_anon_property(hash, "anon.anon_property-#{r}", "value-updated")
+    {result, _property} =
+      Telemetry.log_anon_property(hash, "anon.anon_property-#{r}", "value-updated")
 
     assert result == :ok
 

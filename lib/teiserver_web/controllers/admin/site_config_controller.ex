@@ -1,9 +1,11 @@
 defmodule TeiserverWeb.Admin.SiteConfigController do
+  alias Teiserver.Config
+  alias Teiserver.Helper.StringHelper
+
   use TeiserverWeb, :controller
 
-  alias Teiserver.Config
-
   plug Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Auth.Server,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}
@@ -46,12 +48,12 @@ defmodule TeiserverWeb.Admin.SiteConfigController do
     tab =
       Config.get_site_config_type(key)
       |> Map.get(:section)
-      |> Teiserver.Helper.StringHelper.remove_spaces()
+      |> StringHelper.remove_spaces()
 
     add_audit_log(conn, "Site config:Update value", %{key: key, value: value})
 
     conn
     |> put_flash(:info, "Your preferences have been updated.")
-    |> redirect(to: Routes.admin_site_config_path(conn, :index) <> "##{tab}")
+    |> redirect(to: ~p"/teiserver/admin/site##{tab}")
   end
 end

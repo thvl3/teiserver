@@ -1,11 +1,12 @@
 defmodule Teiserver.Party.PartyTest do
+  alias ExUnit.Callbacks
+  alias Teiserver.Party
+  alias Teiserver.Support.Polling
+  alias Teiserver.Tachyon, as: TachyonLib
+
   use Teiserver.DataCase
 
   @moduletag :tachyon
-
-  alias Teiserver.Party
-  alias Teiserver.Tachyon
-  alias Teiserver.Support.Polling
 
   test "create party" do
     assert {:ok, party_id, _pid} = Party.create_party(123)
@@ -20,9 +21,9 @@ defmodule Teiserver.Party.PartyTest do
       {:ok, party_id, party_pid} = Party.create_party(123, sink_pid)
       Process.exit(sink_pid, :shutdown)
 
-      Tachyon.restart_system()
+      TachyonLib.restart_system()
       Polling.poll_until(fn -> Process.alive?(party_pid) end, &(&1 == false))
-      Polling.poll_until_some(fn -> Teiserver.Party.lookup(party_id) end)
+      Polling.poll_until_some(fn -> Party.lookup(party_id) end)
     end
 
     test "user leave after restoration tears down party" do
@@ -30,8 +31,8 @@ defmodule Teiserver.Party.PartyTest do
       {:ok, party_id, _party_pid} = Party.create_party(123, sink_pid)
       Process.exit(sink_pid, :shutdown)
 
-      Tachyon.restart_system()
-      {:ok, _} = Party.rejoin(party_id, 123)
+      TachyonLib.restart_system()
+      {:ok, _party} = Party.rejoin(party_id, 123)
       :ok = Party.leave_party(party_id, 123)
       Polling.poll_until_nil(fn -> Party.lookup(party_id) end)
     end
@@ -41,10 +42,10 @@ defmodule Teiserver.Party.PartyTest do
       {:ok, party_id, _party_pid} = Party.create_party(123, sink_pid)
       Process.exit(sink_pid, :shutdown)
 
-      Tachyon.restart_system()
+      TachyonLib.restart_system()
 
       sink_pid = mk_sink()
-      {:ok, _} = Party.rejoin(party_id, 123, sink_pid)
+      {:ok, _party} = Party.rejoin(party_id, 123, sink_pid)
       Process.exit(sink_pid, :kill)
       Polling.poll_until_nil(fn -> Party.lookup(party_id) end)
     end
@@ -54,7 +55,7 @@ defmodule Teiserver.Party.PartyTest do
       {:ok, party_id, _party_pid} = Party.create_party(123, sink_pid)
       Process.exit(sink_pid, :shutdown)
 
-      Tachyon.restart_system()
+      TachyonLib.restart_system()
       assert {:error, :not_a_member} = Party.rejoin(party_id, 456)
     end
 
@@ -63,17 +64,17 @@ defmodule Teiserver.Party.PartyTest do
       {:ok, party_id, party_pid} = Party.create_party(123, sink_pid)
 
       sink_pid2 = mk_sink(:sink2)
-      {:ok, _} = Party.create_invite(party_id, 456, sink_pid2)
+      {:ok, _invite} = Party.create_invite(party_id, 456, sink_pid2)
 
       Process.exit(sink_pid, :shutdown)
       Process.exit(sink_pid2, :shutdown)
       :timer.sleep(10)
 
-      Tachyon.restart_system()
+      TachyonLib.restart_system()
       Polling.poll_until(fn -> Process.alive?(party_pid) end, &(&1 == false))
-      Polling.poll_until_some(fn -> Teiserver.Party.lookup(party_id) end)
+      Polling.poll_until_some(fn -> Party.lookup(party_id) end)
 
-      {:ok, _} = Party.rejoin(party_id, 456)
+      {:ok, _party} = Party.rejoin(party_id, 456)
     end
 
     test "timeout if no rejoin in time" do
@@ -81,25 +82,25 @@ defmodule Teiserver.Party.PartyTest do
       {:ok, party_id, _party_pid} = Party.create_party(123, sink_pid)
       Process.exit(sink_pid, :shutdown)
 
-      Tachyon.set_restoration_timeout(0)
-      ExUnit.Callbacks.on_exit(fn -> Tachyon.reset_restoration_timeout() end)
+      TachyonLib.set_restoration_timeout(0)
+      Callbacks.on_exit(fn -> TachyonLib.reset_restoration_timeout() end)
 
-      Tachyon.restart_system()
+      TachyonLib.restart_system()
       # we are going to assume that 2ms is enough time for the party to be restored
       # and then timeout. The actual restoration logic is already tested earlier in
       # this file so assume it works
       :timer.sleep(2)
-      Polling.poll_until_nil(fn -> Teiserver.Party.lookup(party_id) end)
+      Polling.poll_until_nil(fn -> Party.lookup(party_id) end)
     end
   end
 
-  def setup_config(_) do
-    Tachyon.enable_state_restoration()
-    ExUnit.Callbacks.on_exit(fn -> Tachyon.disable_state_restoration() end)
+  def setup_config(_context) do
+    TachyonLib.enable_state_restoration()
+    Callbacks.on_exit(fn -> TachyonLib.disable_state_restoration() end)
   end
 
   defp mk_sink(name \\ :sink) do
     Supervisor.child_spec({Task, fn -> :timer.sleep(:infinity) end}, id: name)
-    |> ExUnit.Callbacks.start_supervised!()
+    |> Callbacks.start_supervised!()
   end
 end

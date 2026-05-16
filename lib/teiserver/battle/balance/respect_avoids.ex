@@ -8,12 +8,13 @@ defmodule Teiserver.Battle.Balance.RespectAvoids do
   Parties will have signficantly higher importance than avoids. To limit the amount of computation, the amount of
   avoids is limited for higher player counts.
   """
-  alias Teiserver.Battle.Balance.BalanceTypes, as: BT
-  alias Teiserver.Battle.Balance.RespectAvoidsTypes, as: RA
-  alias Teiserver.Battle.Balance.BruteForceAvoid
-  import Teiserver.Helper.NumberHelper, only: [format: 1]
+
   alias Teiserver.Account.RelationshipLib
+  alias Teiserver.Battle.Balance.BalanceTypes, as: BT
+  alias Teiserver.Battle.Balance.BruteForceAvoid
+  alias Teiserver.Battle.Balance.RespectAvoidsTypes, as: RA
   alias Teiserver.Config
+  import Teiserver.Helper.NumberHelper, only: [format: 1]
   # If player uncertainty is greater than equal to this, that player is considered a noob
   # The lowest uncertainty rank 0 player at the time of writing this is 6.65
   @high_uncertainty 6.65
@@ -100,13 +101,11 @@ defmodule Teiserver.Battle.Balance.RespectAvoids do
   def should_use_algo(team_count) do
     # If team count not two, then call loser_picks
     # Otherwise return :ok
-    cond do
-      team_count != 2 ->
-        {:error, "Team count not equal to 2. Will use loser_picks algorithm instead.",
-         Teiserver.Battle.Balance.LoserPicks}
-
-      true ->
-        :ok
+    if team_count != 2 do
+      {:error, "Team count not equal to 2. Will use loser_picks algorithm instead.",
+       Teiserver.Battle.Balance.LoserPicks}
+    else
+      :ok
     end
   end
 
@@ -126,21 +125,19 @@ defmodule Teiserver.Battle.Balance.RespectAvoids do
     }
 
     noob_log =
-      cond do
-        length(state.noobs) > 0 ->
-          noobs_string =
-            Enum.map(state.noobs, fn x ->
-              chev = Map.get(x, :rank, 0) + 1
-              "#{x.name} (chev: #{chev}, σ: #{format(x.uncertainty)})"
-            end)
+      if Enum.empty?(state.noobs) do
+        "Solo new players: None"
+      else
+        noobs_string =
+          Enum.map(state.noobs, fn x ->
+            chev = Map.get(x, :rank, 0) + 1
+            "#{x.name} (chev: #{chev}, σ: #{format(x.uncertainty)})"
+          end)
 
-          [
-            "High uncertainty players (avoid immune):",
-            noobs_string
-          ]
-
-        true ->
-          "Solo new players: None"
+        [
+          "High uncertainty players (avoid immune):",
+          noobs_string
+        ]
       end
 
     logs =
@@ -168,9 +165,10 @@ defmodule Teiserver.Battle.Balance.RespectAvoids do
     max_avoids = state.lobby_max_avoids
 
     max_avoid_text =
-      cond do
-        max_avoids != nil && max_avoids <= 20 -> " (Max: #{max_avoids})"
-        true -> ""
+      if max_avoids != nil && max_avoids <= 20 do
+        " (Max: #{max_avoids})"
+      else
+        ""
       end
 
     avoid_text = "Avoids considered: #{Enum.count(state.avoids)}" <> max_avoid_text
@@ -193,7 +191,9 @@ defmodule Teiserver.Battle.Balance.RespectAvoids do
   end
 
   defp get_party_logs(state) do
-    if Enum.count(state.parties) > 0 do
+    if Enum.empty?(state.parties) do
+      "None"
+    else
       state.parties
       # credo:disable-for-lines:9 Credo.Check.Refactor.MapJoin
       |> Enum.map(fn party ->
@@ -205,8 +205,6 @@ defmodule Teiserver.Battle.Balance.RespectAvoids do
         "(#{Enum.join(player_names, ", ")})"
       end)
       |> Enum.join(", ")
-    else
-      "None"
     end
   end
 
@@ -247,17 +245,11 @@ defmodule Teiserver.Battle.Balance.RespectAvoids do
   # For high player counts, we need a limit for performance reasons
   # For lower player counts, we have no limit
   def get_max_avoids(player_count, players_in_parties_count) do
-    cond do
-      # 7v7 and above
-      player_count >= 14 ->
-        # For 7v7 and above, if there are no parties, we pull at most 7 avoids from the database
-        # For every two players in parties, we reduce the number of avoids by 1 to a minimum of 1
-        # This is for performance reasons as processing parties and avoids takes time
-        max(1, ((14 - players_in_parties_count) / 2) |> trunc())
-
-      # Anything else
-      true ->
-        nil
+    if player_count >= 14 do
+      # For 7v7 and above, if there are no parties, we pull at most 7 avoids from the database
+      # For every two players in parties, we reduce the number of avoids by 1 to a minimum of 1
+      # This is for performance reasons as processing parties and avoids takes time
+      max(1, ((14 - players_in_parties_count) / 2) |> trunc())
     end
   end
 
@@ -292,8 +284,7 @@ defmodule Teiserver.Battle.Balance.RespectAvoids do
 
     logs = [
       "Perform brute force with the following players to get the best score.",
-      # credo:disable-for-next-line Credo.Check.Refactor.MapJoin
-      "Players: #{Enum.join(Enum.map(state.top_experienced, fn x -> x.name end), ", ")}",
+      "Players: #{Enum.map_join(state.top_experienced, ", ", fn x -> x.name end)}",
       @splitter,
       "Brute force result:",
       "Team rating diff penalty: #{format(combo_result.rating_diff_penalty)}",
@@ -303,8 +294,7 @@ defmodule Teiserver.Battle.Balance.RespectAvoids do
       "Score: #{format(combo_result.score)} (lower is better)",
       @splitter,
       "Draft remaining players (ordered from best to worst).",
-      # credo:disable-for-next-line Credo.Check.Refactor.MapJoin
-      "Remaining: #{Enum.join(Enum.map(remaining, fn x -> x.name end), ", ")}"
+      "Remaining: #{Enum.map_join(remaining, ", ", fn x -> x.name end)}"
     ]
 
     default_acc = combo_result
@@ -366,15 +356,15 @@ defmodule Teiserver.Battle.Balance.RespectAvoids do
   end
 
   defp get_captain_rating(team) do
-    if Enum.count(team) > 0 do
+    if Enum.empty?(team) do
+      0
+    else
       captain =
         Enum.max_by(team, fn x ->
           x.rating
         end)
 
       captain[:rating]
-    else
-      0
     end
   end
 
@@ -424,11 +414,7 @@ defmodule Teiserver.Battle.Balance.RespectAvoids do
           id: id,
           uncertainty: uncertainty,
           rank: rank,
-          in_party?:
-            cond do
-              count <= 1 -> false
-              true -> true
-            end
+          in_party?: count > 1
         }
   end
 
@@ -436,7 +422,7 @@ defmodule Teiserver.Battle.Balance.RespectAvoids do
   # This will not be displayed in chobby ui or player list; it's only used for balance
   # It will be used when calculating team deviation
   defp adjusted_rating(rating, uncertainty, rank) do
-    if is_newish_player?(rank, uncertainty) do
+    if newish_player?(rank, uncertainty) do
       # For newish players we assume they are the worst in the lobby e.g. 0 match rating and
       # then they converge to their true rating over time
       # Once their uncertainty is low enough, we fully trust their rating
@@ -456,24 +442,22 @@ defmodule Teiserver.Battle.Balance.RespectAvoids do
 
   @spec get_avoids([any()], number(), boolean()) :: [String.t()]
   def get_avoids(player_ids, lobby_max_avoids, debug_mode? \\ false) do
-    cond do
-      debug_mode? ->
-        RelationshipLib.get_lobby_avoids(player_ids, lobby_max_avoids, @per_player_avoid_limit)
+    if debug_mode? do
+      RelationshipLib.get_lobby_avoids(player_ids, lobby_max_avoids, @per_player_avoid_limit)
+    else
+      avoid_min_hours = get_avoid_delay()
 
-      true ->
-        avoid_min_hours = get_avoid_delay()
-
-        RelationshipLib.get_lobby_avoids(
-          player_ids,
-          lobby_max_avoids,
-          @per_player_avoid_limit,
-          avoid_min_hours
-        )
+      RelationshipLib.get_lobby_avoids(
+        player_ids,
+        lobby_max_avoids,
+        @per_player_avoid_limit,
+        avoid_min_hours
+      )
     end
   end
 
   @spec get_avoid_delay() :: number()
-  defp get_avoid_delay() do
+  defp get_avoid_delay do
     Config.get_site_config_cache("lobby.Avoid min hours required")
   end
 
@@ -486,7 +470,8 @@ defmodule Teiserver.Battle.Balance.RespectAvoids do
     end)
   end
 
-  ## Players that are in parties or avoids (in either direction) are at the front, then sort by rating
+  ## Players that are in parties or avoids (in either
+  ## direction) are at the front, then sort by rating
   @spec sort_experienced_players([RA.player()], [[number()]]) :: [RA.player()]
   def sort_experienced_players(experienced_players, avoids) do
     flat_avoids = avoids |> List.flatten()
@@ -521,11 +506,11 @@ defmodule Teiserver.Battle.Balance.RespectAvoids do
   @spec get_solo_noobs([RA.player()]) :: any()
   def get_solo_noobs(players) do
     Enum.filter(players, fn player ->
-      is_newish_player?(player.rank, player.uncertainty) && !player.in_party?
+      newish_player?(player.rank, player.uncertainty) && !player.in_party?
     end)
   end
 
-  def is_newish_player?(rank, uncertainty) do
+  def newish_player?(rank, uncertainty) do
     # It is possible that someone has high uncertainty due to
     # playing unranked, playing PvE, or playing a different game mode e.g. 1v1
     # If they have many hours i.e. chev 4 = 100 hours, we will not consider them newish

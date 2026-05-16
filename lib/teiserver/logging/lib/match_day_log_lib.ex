@@ -1,16 +1,17 @@
 defmodule Teiserver.Logging.MatchDayLogLib do
-  use TeiserverWeb, :library
-
+  @moduledoc false
   alias Teiserver.Logging.MatchDayLog
 
+  use TeiserverWeb, :library
+
   @spec colours :: atom
-  def colours(), do: :success2
+  def colours, do: :success2
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-monitor-heart-rate"
+  def icon, do: "fa-solid fa-monitor-heart-rate"
 
   @spec get_match_day_logs :: Ecto.Query.t()
-  def get_match_day_logs() do
+  def get_match_day_logs do
     from(logs in MatchDayLog)
   end
 
@@ -25,8 +26,8 @@ defmodule Teiserver.Logging.MatchDayLogLib do
   end
 
   @spec _search(Ecto.Query.t(), atom, any) :: Ecto.Query.t()
-  def _search(query, _, ""), do: query
-  def _search(query, _, nil), do: query
+  def _search(query, _key, ""), do: query
+  def _search(query, _key, nil), do: query
 
   def _search(query, :date, date) do
     from logs in query,

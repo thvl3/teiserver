@@ -4,10 +4,17 @@ defmodule Teiserver.Game.MatchRatingLib do
   to balance matches. For that use Teiserver.Battle.BalanceLib.
   """
 
-  alias Teiserver.{Account, Coordinator, Config, Game, Battle}
-  alias Teiserver.Data.Types, as: T
-  alias Teiserver.Repo
+  alias Ecto.Adapters.SQL
+  alias Ecto.Multi
+  alias Teiserver.Account
+  alias Teiserver.Battle
   alias Teiserver.Battle.BalanceLib
+  alias Teiserver.Config
+  alias Teiserver.Coordinator
+  alias Teiserver.Data.Types, as: T
+  alias Teiserver.Game
+  alias Teiserver.Game.RatingLog
+  alias Teiserver.Repo
   require Logger
 
   @rated_match_types [
@@ -20,22 +27,21 @@ defmodule Teiserver.Game.MatchRatingLib do
     "Partied Team"
   ]
 
-  # credo:disable-for-next-line Credo.Check.Design.TagTODO
   # TODO Remove "Team" from here once the split is done
 
   @spec rating_type_list() :: [String.t()]
-  def rating_type_list() do
+  def rating_type_list do
     @rated_match_types
   end
 
   @spec rating_type_id_lookup() :: %{Integer.t() => String.t()}
-  def rating_type_id_lookup() do
+  def rating_type_id_lookup do
     rating_type_list()
     |> Map.new(fn name -> {Game.get_or_add_rating_type(name), name} end)
   end
 
   @spec rating_type_name_lookup() :: %{String.t() => Integer.t()}
-  def rating_type_name_lookup() do
+  def rating_type_name_lookup do
     rating_type_list()
     |> Map.new(fn name -> {name, Game.get_or_add_rating_type(name)} end)
   end
@@ -50,7 +56,7 @@ defmodule Teiserver.Game.MatchRatingLib do
     |> rate_match(rerate?)
   end
 
-  def rate_match(nil, _), do: {:error, :no_match}
+  def rate_match(nil, _rerate?), do: {:error, :no_match}
 
   def rate_match(match, rerate?) do
     logs = Game.list_rating_logs(search: [match_id: match.id], limit: 1, select: [:id])
@@ -58,7 +64,7 @@ defmodule Teiserver.Game.MatchRatingLib do
     sizes =
       match.members
       |> Enum.group_by(fn m -> m.team_id end)
-      |> Enum.map(fn {_, members} -> Enum.count(members) end)
+      |> Enum.map(fn {_team_id, members} -> Enum.count(members) end)
       |> Enum.uniq()
 
     cheating = get_in(match.data || %{}, ["export_data", "cheating"]) || 0
@@ -224,7 +230,7 @@ defmodule Teiserver.Game.MatchRatingLib do
     save_rating_logs(match.id, win_ratings, loss_ratings, opts)
 
     # Update the match to track rating type
-    {:ok, _} = Battle.update_match(match, %{rating_type_id: rating_type_id})
+    {:ok, _match} = Battle.update_match(match, %{rating_type_id: rating_type_id})
 
     # If there is a balancer for this match we need to tell it to reset the hashes
     # because there are new values
@@ -375,48 +381,10 @@ defmodule Teiserver.Game.MatchRatingLib do
       end)
       |> List.flatten()
 
-    # # If you lose we calculate it as last place, there's no such thing as 2nd place
-    # loss_ratings = loser_ratings
-    #   |> Enum.map(fn team_ratings ->
-    #     temp_loser_ratings = loser_ratings
-    #       |> List.delete(team_ratings)
-
-    #     lose_results = rate_with_ids([winner_ratings | temp_loser_ratings] ++ [team_ratings], as_map: true)
-
-    #     team_ratings
-    #       |> Enum.map(fn {user_id, _old_rating} ->
-    #         rating_update = lose_results[user_id]
-
-    #         user_rating = rating_lookup[user_id] || BalanceLib.default_rating(rating_type_id)
-    #         ratiod_rating_update = apply_change_ratio(user_rating, rating_update, opponent_ratio)
-    #         do_update_rating(user_id, match, user_rating, ratiod_rating_update)
-    #       end)
-    #   end)
-    #   |> List.flatten
-
-    # # If you lose we calculate you are 2nd place
-    # loss_ratings = loser_ratings
-    #   |> Enum.map(fn team_ratings ->
-    #     temp_loser_ratings = loser_ratings
-    #       |> List.delete(team_ratings)
-
-    #     lose_results = rate_with_ids([winner_ratings, team_ratings] ++ temp_loser_ratings, as_map: true)
-
-    #     team_ratings
-    #       |> Enum.map(fn {user_id, _old_rating} ->
-    #         rating_update = lose_results[user_id]
-
-    #         user_rating = rating_lookup[user_id] || BalanceLib.default_rating(rating_type_id)
-    #         ratiod_rating_update = apply_change_ratio(user_rating, rating_update, opponent_ratio)
-    #         do_update_rating(user_id, match, user_rating, ratiod_rating_update)
-    #       end)
-    #   end)
-    #   |> List.flatten
-
     save_rating_logs(match.id, win_ratings, loss_ratings, opts)
 
     # Update the match to track rating type
-    {:ok, _} = Battle.update_match(match, %{rating_type_id: rating_type_id})
+    {:ok, _match} = Battle.update_match(match, %{rating_type_id: rating_type_id})
 
     # If there is a balancer for this match we need to tell it to reset the hashes
     # because there are new values
@@ -450,14 +418,13 @@ defmodule Teiserver.Game.MatchRatingLib do
         user_rating
       else
         {:ok, rating} =
-          Account.create_rating(
-            Map.merge(user_rating, %{
-              user_id: user_id,
-              last_updated: match.finished,
-              num_matches: 0,
-              season: active_season()
-            })
-          )
+          Map.merge(user_rating, %{
+            user_id: user_id,
+            last_updated: match.finished,
+            num_matches: 0,
+            season: active_season()
+          })
+          |> Account.create_rating()
 
         rating
       end
@@ -514,8 +481,8 @@ defmodule Teiserver.Game.MatchRatingLib do
   @spec reset_player_ratings() :: :ok
   def reset_player_ratings do
     # Delete all ratings and rating logs
-    Ecto.Adapters.SQL.query!(Repo, "DELETE FROM teiserver_game_rating_logs", [])
-    Ecto.Adapters.SQL.query!(Repo, "DELETE FROM teiserver_account_ratings", [])
+    SQL.query!(Repo, "DELETE FROM teiserver_game_rating_logs", [])
+    SQL.query!(Repo, "DELETE FROM teiserver_account_ratings", [])
 
     :ok
   end
@@ -523,13 +490,13 @@ defmodule Teiserver.Game.MatchRatingLib do
   @spec reset_player_ratings(Integer.t()) :: :ok
   def reset_player_ratings(rating_type_id) when is_integer(rating_type_id) do
     # Delete all ratings and rating logs
-    Ecto.Adapters.SQL.query!(
+    SQL.query!(
       Repo,
       "DELETE FROM teiserver_game_rating_logs WHERE rating_type_id = $1",
       [rating_type_id]
     )
 
-    Ecto.Adapters.SQL.query!(
+    SQL.query!(
       Repo,
       "DELETE FROM teiserver_account_ratings WHERE rating_type_id = $1",
       [rating_type_id]
@@ -553,7 +520,7 @@ defmodule Teiserver.Game.MatchRatingLib do
   end
 
   @spec re_rate_all_matches :: non_neg_integer()
-  def re_rate_all_matches() do
+  def re_rate_all_matches do
     match_ids =
       Battle.list_matches(
         search: [
@@ -622,7 +589,7 @@ defmodule Teiserver.Game.MatchRatingLib do
       nil ->
         Logger.error("No rating type of #{rating_type}")
 
-      _ ->
+      _id ->
         reset_player_ratings(rating_type_id)
         match_count = re_rate_all_matches_of_type(rating_type)
 
@@ -646,7 +613,7 @@ defmodule Teiserver.Game.MatchRatingLib do
   end
 
   @spec predict_winning_team([map()], non_neg_integer()) :: map()
-  def predict_winning_team([], _), do: %{winning_team: nil}
+  def predict_winning_team([], _rating_type_id), do: %{winning_team: nil}
 
   def predict_winning_team(players, rating_type_id) do
     team_scores =
@@ -677,7 +644,8 @@ defmodule Teiserver.Game.MatchRatingLib do
     }
   end
 
-  # The following is used purely for testing the rating algorithm, it is not intended to be used elsewhere
+  # The following is used purely for testing the rating
+  # algorithm, it is not intended to be used elsewhere
   defp predict_match(match_id) when is_integer(match_id) do
     Battle.get_match!(match_id, preload: [:members])
     |> predict_match()
@@ -688,7 +656,7 @@ defmodule Teiserver.Game.MatchRatingLib do
     predict_winning_team(match.members, rating_type_id) |> Map.get(:winning_team)
   end
 
-  def test_predictions() do
+  def test_predictions do
     results =
       Battle.list_matches(
         search: [
@@ -722,7 +690,7 @@ defmodule Teiserver.Game.MatchRatingLib do
       rating_groups
       |> Enum.map(fn ratings_with_ids ->
         ratings_with_ids
-        |> Enum.map(fn {_, rating} ->
+        |> Enum.map(fn {_id, rating} ->
           rating
         end)
       end)
@@ -736,7 +704,7 @@ defmodule Teiserver.Game.MatchRatingLib do
       |> Enum.map(fn {updated_values, original_values} ->
         original_values
         |> Enum.zip(updated_values)
-        |> Enum.map(fn {{id, _}, updated_value} ->
+        |> Enum.map(fn {{id, _original_rating}, updated_value} ->
           {id, updated_value}
         end)
       end)
@@ -753,32 +721,36 @@ defmodule Teiserver.Game.MatchRatingLib do
   # Saves ratings logs to database
   # If rerate? then delete existing logs of that match before we insert
   defp save_rating_logs(match_id, win_ratings, loss_ratings, opts) do
+    save_rating_logs(match_id, win_ratings ++ loss_ratings, opts)
+  end
+
+  defp save_rating_logs(match_id, all_ratings, opts) do
     rerate? = Keyword.get(opts, :rerate?, false)
 
     if rerate? do
-      Ecto.Multi.new()
-      |> Ecto.Multi.run(:delete_existing, fn repo, _ ->
+      Multi.new()
+      |> Multi.run(:delete_existing, fn repo, _changes ->
         query = """
         delete from teiserver_game_rating_logs l where
         l.match_id = $1
         """
 
-        Ecto.Adapters.SQL.query(repo, query, [match_id])
+        SQL.query(repo, query, [match_id])
       end)
-      |> Ecto.Multi.insert_all(:insert_all, Teiserver.Game.RatingLog, win_ratings ++ loss_ratings)
-      |> Teiserver.Repo.transaction()
+      |> Multi.insert_all(:insert_all, RatingLog, all_ratings)
+      |> Repo.transaction()
     else
-      Ecto.Multi.new()
-      |> Ecto.Multi.insert_all(:insert_all, Teiserver.Game.RatingLog, win_ratings ++ loss_ratings)
-      |> Teiserver.Repo.transaction()
+      Multi.new()
+      |> Multi.insert_all(:insert_all, RatingLog, all_ratings)
+      |> Repo.transaction()
     end
   end
 
-  defp get_tau() do
+  defp get_tau do
     Config.get_site_config_cache("rating.Tau")
   end
 
-  def active_season() do
+  def active_season do
     Config.get_site_config_cache("rating.Season")
   end
 end

@@ -1,18 +1,16 @@
 defmodule Mix.Tasks.Teiserver.EnsureTestUsers do
-  @usage_str "Usage: `mix teiserver.ensure_test_users --host <host> <tok> <n>`\nExample: mix teiserver.ensure_test_users --host http://localhost:4000 <TOK> 10
-
-  The token must have `admin.user` permission.
-  "
-
   @moduledoc """
   Generate `n` random users based on predictible names.
   The goal is to end up with `n` users and access token ready to be used
   for load testing.
 
-  #{@usage_str}
+  Usage: `mix teiserver.ensure_test_users --host <host> <tok> <n>`
+  Example: mix teiserver.ensure_test_users --host http://localhost:4000 <TOK> 10
+
+  The token must have `admin.user` permission.
   """
 
-  @shortdoc "blah"
+  @shortdoc "create random users for load testing"
 
   use Mix.Task
 
@@ -26,7 +24,7 @@ defmodule Mix.Tasks.Teiserver.EnsureTestUsers do
           parsed
 
         {:error, err} ->
-          shell.error(inspect(err))
+          err |> inspect() |> shell.error()
           exit({:shutdown, 1})
       end
 
@@ -42,7 +40,7 @@ defmodule Mix.Tasks.Teiserver.EnsureTestUsers do
       timeout: :infinity
     )
     |> Enum.each(fn {:ok, res} ->
-      IO.puts(Jason.encode!(res))
+      res |> Jason.encode!() |> IO.puts()
     end)
   end
 
@@ -73,10 +71,7 @@ defmodule Mix.Tasks.Teiserver.EnsureTestUsers do
             password: "password",
             # roles and permissions are so confusing
             roles: ["Verified"],
-            permissions: ["Verified"],
-            data: %{
-              roles: ["Verified"]
-            }
+            permissions: ["Verified"]
           })
 
         resp = HTTPoison.post!(url, data, headers)
@@ -98,8 +93,8 @@ defmodule Mix.Tasks.Teiserver.EnsureTestUsers do
   end
 
   defp parse_args(args) do
-    with {parsed, _, []} <- OptionParser.parse(args, strict: [host: :string]),
-         [raw_count, tok | _] <- Enum.reverse(args),
+    with {parsed, _remaining, []} <- OptionParser.parse(args, strict: [host: :string]),
+         [raw_count, tok | _rest] <- Enum.reverse(args),
          {n, ""} <- Integer.parse(raw_count) do
       res = %{
         count: n,
@@ -109,8 +104,8 @@ defmodule Mix.Tasks.Teiserver.EnsureTestUsers do
 
       {:ok, res}
     else
-      {_, _, errs} -> {:error, errs}
-      _ -> {:error, "Cannot parse arguments"}
+      {_parsed, _remaining, errs} -> {:error, errs}
+      _other -> {:error, "Cannot parse arguments"}
     end
   end
 end

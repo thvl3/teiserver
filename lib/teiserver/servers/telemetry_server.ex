@@ -1,9 +1,11 @@
 defmodule Teiserver.Telemetry.TelemetryServer do
-  use GenServer
-  alias Teiserver.{Lobby, Client}
-  alias Teiserver.Account.LoginThrottleServer
-  require Logger
+  @moduledoc false
   alias Phoenix.PubSub
+  alias Teiserver.Account.LoginThrottleServer
+  alias Teiserver.Client
+  alias Teiserver.Lobby
+  use GenServer
+  require Logger
 
   @client_states ~w(lobby menu player spectator total)a
   @tick_period 9_000
@@ -40,7 +42,7 @@ defmodule Teiserver.Telemetry.TelemetryServer do
     login_queue_length: 0
   }
 
-  @impl true
+  @impl GenServer
   def handle_info(:tick, state) do
     totals = get_totals(state)
     report_telemetry(totals)
@@ -54,7 +56,7 @@ defmodule Teiserver.Telemetry.TelemetryServer do
     {:noreply, %{state | counters: new_counters}}
   end
 
-  @impl true
+  @impl GenServer
   def handle_cast(
         {:spring_messages_sent, _userid, server_count, _batch_count, client_count},
         state
@@ -72,7 +74,7 @@ defmodule Teiserver.Telemetry.TelemetryServer do
     {:noreply, %{state | matchmaking: new_matchmaking}}
   end
 
-  @impl true
+  @impl GenServer
   def handle_call(:get_totals_and_reset, _from, state) do
     {:reply, get_totals(state), @default_state}
   end
@@ -173,7 +175,7 @@ defmodule Teiserver.Telemetry.TelemetryServer do
       |> Map.values()
       |> Enum.reject(fn
         %{lobby_id: lobby_id} -> lobby_id == nil
-        _ -> true
+        _other -> true
       end)
       |> Enum.reduce(%{}, fn client, memberships ->
         new_lobby_membership = [client.userid | Map.get(memberships, client.lobby_id, [])]
@@ -217,7 +219,7 @@ defmodule Teiserver.Telemetry.TelemetryServer do
   end
 
   @spec get_os_mon_data :: map()
-  def get_os_mon_data() do
+  def get_os_mon_data do
     # cpu_per_core =
     #   case :cpu_sup.util([:detailed, :per_cpu]) do
     #     {:all, 0, 0, []} -> []
@@ -233,15 +235,13 @@ defmodule Teiserver.Telemetry.TelemetryServer do
     process_counts = %{
       system_servers: Horde.Registry.count(Teiserver.ServerRegistry),
       throttle_servers: Horde.Registry.count(Teiserver.ThrottleRegistry),
-      accolade_servers: Horde.Registry.count(Teiserver.AccoladesRegistry),
       consul_servers: Horde.Registry.count(Teiserver.ConsulRegistry),
       balancer_servers: Horde.Registry.count(Teiserver.BalancerRegistry),
       lobby_servers: Horde.Registry.count(Teiserver.LobbyRegistry),
       client_servers: Horde.Registry.count(Teiserver.ClientRegistry),
       party_servers: Horde.Registry.count(Teiserver.PartyRegistry),
       queue_wait_servers: Horde.Registry.count(Teiserver.QueueWaitRegistry),
-      queue_match_servers: Horde.Registry.count(Teiserver.QueueMatchRegistry),
-      managed_lobby_servers: Horde.Registry.count(Teiserver.LobbyPolicyRegistry)
+      queue_match_servers: Horde.Registry.count(Teiserver.QueueMatchRegistry)
     }
 
     process_counts =
@@ -271,7 +271,7 @@ defmodule Teiserver.Telemetry.TelemetryServer do
     GenServer.start_link(__MODULE__, opts[:data], opts)
   end
 
-  @impl true
+  @impl GenServer
   def init(_opts) do
     :timer.send_interval(@tick_period, self(), :tick)
 

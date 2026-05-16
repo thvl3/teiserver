@@ -47,9 +47,7 @@ defmodule Teiserver.Lobby.LobbyStruct do
     match_id: nil,
 
     # External references
-    lobby_policy_id: nil,
     queue_id: nil,
-    tournament_id: nil,
 
     # Consul server stuff
     gatekeeper: "default",
@@ -57,8 +55,6 @@ defmodule Teiserver.Lobby.LobbyStruct do
     maximum_rating_to_play: 1000,
     minimum_rank_to_play: 0,
     maximum_rank_to_play: 1000,
-    minimum_uncertainty_to_play: 0,
-    maximum_uncertainty_to_play: 1000,
     minimum_skill_to_play: 0,
     maximum_skill_to_play: 1000,
     level_to_spectate: 0,

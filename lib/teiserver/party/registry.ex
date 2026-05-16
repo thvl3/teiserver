@@ -8,13 +8,13 @@ defmodule Teiserver.Party.Registry do
   @spec lookup(Party.Server.id()) :: pid() | nil
   def lookup(party_id) do
     case Registry.lookup(__MODULE__, party_id) do
-      [{pid, _}] -> pid
-      _ -> nil
+      [{pid, _value}] -> pid
+      _other -> nil
     end
   end
 
   @spec count() :: non_neg_integer()
-  def count() do
+  def count do
     Registry.count(__MODULE__)
   rescue
     # when the registry isn't up (yet), can happen with telemetry polling
@@ -22,11 +22,11 @@ defmodule Teiserver.Party.Registry do
     _e in ArgumentError -> 0
   end
 
-  def start_link() do
+  def start_link do
     Registry.start_link(keys: :unique, name: __MODULE__)
   end
 
-  def child_spec(_) do
+  def child_spec(_opts) do
     Supervisor.child_spec(Registry,
       id: __MODULE__,
       start: {__MODULE__, :start_link, []}

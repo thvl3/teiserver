@@ -1,16 +1,17 @@
 defmodule Teiserver.Logging.ServerMonthLogLib do
-  use TeiserverWeb, :library
-
+  @moduledoc false
   alias Teiserver.Logging.ServerMonthLog
 
+  use TeiserverWeb, :library
+
   @spec colours :: atom
-  def colours(), do: :warning2
+  def colours, do: :warning2
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-bar-chart"
+  def icon, do: "fa-solid fa-bar-chart"
 
   @spec get_server_month_logs :: Ecto.Query.t()
-  def get_server_month_logs() do
+  def get_server_month_logs do
     from(logs in ServerMonthLog)
   end
 
@@ -25,8 +26,8 @@ defmodule Teiserver.Logging.ServerMonthLogLib do
   end
 
   @spec _search(Ecto.Query.t(), atom, any) :: Ecto.Query.t()
-  def _search(query, _, ""), do: query
-  def _search(query, _, nil), do: query
+  def _search(query, _key, ""), do: query
+  def _search(query, _key, nil), do: query
 
   def _search(query, :date, {year, month}) do
     from logs in query,

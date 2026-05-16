@@ -1,9 +1,10 @@
 defmodule Teiserver.Account.AuthLib do
   @moduledoc false
+  alias Phoenix.LiveView
   require Logger
 
   @spec icon :: String.t()
-  def icon(), do: "fa-solid fa-address-card"
+  def icon, do: "fa-solid fa-address-card"
 
   @spec get_all_permission_sets() :: list()
   def get_all_permission_sets do
@@ -53,18 +54,17 @@ defmodule Teiserver.Account.AuthLib do
   end
 
   def allow_any?(conn, perms) do
-    Enum.any?(
-      perms
-      |> Enum.map(fn p -> allow?(conn, p) end)
-    )
+    perms
+    |> Enum.map(fn p -> allow?(conn, p) end)
+    |> Enum.any?()
   end
 
   # If you don't need permissions then lets not bother checking
   @spec allow?(map() | Plug.Conn.t() | [String.t()], String.t() | [String.t()]) :: boolean
   def allow?(nil, []), do: false
-  def allow?(_, nil), do: true
-  def allow?(_, ""), do: true
-  def allow?(_, []), do: true
+  def allow?(_permissions, nil), do: true
+  def allow?(_permissions, ""), do: true
+  def allow?(_permissions, []), do: true
 
   # Handle conn
   def allow?(%Plug.Conn{} = conn, permission_required) do
@@ -95,7 +95,7 @@ defmodule Teiserver.Account.AuthLib do
     )
   end
 
-  def allow?(_, "account") do
+  def allow?(_permissions, "account") do
     true
   end
 
@@ -138,8 +138,8 @@ defmodule Teiserver.Account.AuthLib do
       obj
     else
       obj
-      |> Phoenix.LiveView.put_flash(:warning, "You do not have permission to view this page.")
-      |> Phoenix.LiveView.redirect(to: "/")
+      |> LiveView.put_flash(:warning, "You do not have permission to view this page.")
+      |> LiveView.redirect(to: "/")
     end
   end
 
@@ -152,8 +152,8 @@ defmodule Teiserver.Account.AuthLib do
       obj
     else
       obj
-      |> Phoenix.LiveView.put_flash(:warning, "You do not have permission to view this page.")
-      |> Phoenix.LiveView.redirect(to: "/")
+      |> LiveView.put_flash(:warning, "You do not have permission to view this page.")
+      |> LiveView.redirect(to: "/")
     end
   end
 

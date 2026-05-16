@@ -1,9 +1,9 @@
 defmodule TeiserverWeb.Logging.AuditLogController do
-  use TeiserverWeb, :controller
-
   # alias Teiserver.Logging.AuditLog
   alias Teiserver.Logging
   alias Teiserver.Logging.AuditLogLib
+
+  use TeiserverWeb, :controller
 
   import Teiserver.Helper.StringHelper, only: [get_hash_id: 1]
 
@@ -11,6 +11,7 @@ defmodule TeiserverWeb.Logging.AuditLogController do
   plug :add_breadcrumb, name: "Audit", url: "/logging/audit"
 
   plug Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Logging.AuditLog,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}

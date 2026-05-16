@@ -1,35 +1,36 @@
 defmodule TeiserverWeb.Account.ProfileLive.Appearance do
   @moduledoc false
-  use TeiserverWeb, :live_view
+
   alias Teiserver.Account
   alias Teiserver.Account.RoleLib
+  alias Teiserver.Account.UserLib
+  alias TeiserverWeb.Account.ProfileLive.Overview
+  use TeiserverWeb, :live_view
 
-  @impl true
+  @impl Phoenix.LiveView
   def mount(%{"userid" => userid_str}, _session, socket) do
     userid = String.to_integer(userid_str)
     user = Account.get_user_by_id(userid)
 
     socket =
-      cond do
-        user == nil ->
-          socket
-          |> put_flash(:info, "Unable to find that user")
-          |> redirect(to: ~p"/")
-
-        true ->
-          socket
-          |> assign(:tab, nil)
-          |> assign(:site_menu_active, "teiserver_account")
-          |> assign(:view_colour, Teiserver.Account.UserLib.colours())
-          |> assign(:user, user)
-          |> TeiserverWeb.Account.ProfileLive.Overview.get_relationships_and_permissions()
-          |> list_icons()
+      if is_nil(user) do
+        socket
+        |> put_flash(:info, "Unable to find that user")
+        |> redirect(to: ~p"/")
+      else
+        socket
+        |> assign(:tab, nil)
+        |> assign(:site_menu_active, "teiserver_account")
+        |> assign(:view_colour, UserLib.colours())
+        |> assign(:user, user)
+        |> Overview.get_relationships_and_permissions()
+        |> list_icons()
       end
 
     {:ok, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_params(params, _url, socket) do
     {:noreply, apply_action(socket, socket.assigns.live_action, params)}
   end
@@ -39,7 +40,7 @@ defmodule TeiserverWeb.Account.ProfileLive.Appearance do
     |> assign(:page_title, "Appearance")
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_event("select-style", %{"role" => role_name}, %{assigns: assigns} = socket) do
     available =
       assigns.options

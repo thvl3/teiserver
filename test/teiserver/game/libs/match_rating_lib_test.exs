@@ -1,13 +1,25 @@
 defmodule Teiserver.Game.MatchRatingLibTest do
   @moduledoc false
-  use Teiserver.DataCase, async: true
-  alias Teiserver.Game.MatchRatingLib
-  alias Teiserver.Account.AccountTestLib
-  alias Teiserver.Battle.MatchLib
+
+  alias Ecto.Multi
   alias Teiserver.Account
+  alias Teiserver.Account.AccountTestLib
+  alias Teiserver.AccountFixtures
   alias Teiserver.Battle
-  alias Teiserver.Game
+  alias Teiserver.Battle.MatchLib
   alias Teiserver.Config
+  alias Teiserver.Game
+  alias Teiserver.Game.MatchRatingLib
+  alias Teiserver.Repo
+
+  use Teiserver.DataCase, async: true
+
+  setup do
+    # Ensure the active season is set for the tests
+    TeiserverTestLib.clear_cache(:teiserver_game_rating_types)
+    TeiserverTestLib.teiserver_seed()
+    :ok
+  end
 
   test "num_matches and num_wins is updated after rating a match" do
     # Create two user
@@ -130,7 +142,7 @@ defmodule Teiserver.Game.MatchRatingLibTest do
     reset_to_default_tau()
   end
 
-  defp reset_to_default_tau() do
+  defp reset_to_default_tau do
     Config.delete_site_config("rating.Tau")
   end
 
@@ -171,7 +183,7 @@ defmodule Teiserver.Game.MatchRatingLibTest do
         processed: true,
         game_type: game_type,
         # All rooms are hosted by the same user for now
-        founder_id: 1,
+        founder_id: AccountFixtures.user_fixture().id,
         bots: %{},
         queue_id: nil,
         started: start_time,
@@ -183,7 +195,6 @@ defmodule Teiserver.Game.MatchRatingLibTest do
       %{
         team_id: 0,
         win: match.winning_team == 0,
-        stats: %{},
         party_id: nil,
         user_id: user1_id,
         match_id: match.id
@@ -194,20 +205,19 @@ defmodule Teiserver.Game.MatchRatingLibTest do
       %{
         team_id: 1,
         win: match.winning_team == 1,
-        stats: %{},
         party_id: nil,
         user_id: user2_id,
         match_id: match.id
       }
     ]
 
-    Ecto.Multi.new()
-    |> Ecto.Multi.insert_all(
+    Multi.new()
+    |> Multi.insert_all(
       :insert_all,
       Battle.MatchMembership,
       memberships1 ++ memberships2
     )
-    |> Teiserver.Repo.transaction()
+    |> Repo.transaction()
 
     match
   end

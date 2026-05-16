@@ -1,10 +1,13 @@
 defmodule Teiserver.Account.UserCacheLib do
   @moduledoc false
-  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
-  alias Teiserver.{Account, CacheUser}
-  alias Teiserver.Data.Types, as: T
+
+  alias Teiserver.Account
   alias Teiserver.Account.Guardian
+  alias Teiserver.Account.User
+  alias Teiserver.CacheUser
+  alias Teiserver.Data.Types, as: T
   require Logger
+  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
 
   @spec get_username(T.userid() | nil) :: String.t() | nil
   def get_username(userid), do: get_username_by_id(userid)
@@ -161,7 +164,7 @@ defmodule Teiserver.Account.UserCacheLib do
     |> Enum.filter(fn user -> user != nil end)
   end
 
-  @spec recache_user(T.userid() | CacheUser.t()) :: :ok
+  @spec recache_user(T.userid() | CacheUser.t() | map()) :: :ok
   def recache_user(id) when is_integer(id) do
     Teiserver.cache_delete(:account_user_cache, id)
     Teiserver.cache_delete(:account_user_cache_bang, id)
@@ -169,7 +172,7 @@ defmodule Teiserver.Account.UserCacheLib do
     Teiserver.cache_delete(:config_user_cache, id)
 
     # decache_user(id)
-    Teiserver.Account.decache_relationships(id)
+    Account.decache_relationships(id)
 
     Account.get_user(id)
     |> convert_user()
@@ -179,7 +182,7 @@ defmodule Teiserver.Account.UserCacheLib do
   end
 
   def recache_user(user) do
-    Teiserver.Account.recache_user(user.id)
+    Account.recache_user(user.id)
 
     user
     |> convert_user()
@@ -192,20 +195,57 @@ defmodule Teiserver.Account.UserCacheLib do
   Given a database user it will convert it into a cached user
   """
 
-  @spec convert_user(CacheUser.t() | nil) :: T.user() | nil
+  @spec convert_user(User.t() | nil) :: CacheUser.t() | nil
   def convert_user(nil), do: nil
 
-  def convert_user(%Account.User{} = user) do
+  def convert_user(%User{} = user) do
     data =
       CacheUser.data_keys()
       |> Map.new(fn k ->
         {k, Map.get(user.data || %{}, to_string(k), Account.default_data()[k])}
       end)
 
-    user
-    |> Map.take(CacheUser.keys())
-    |> Map.merge(Account.default_data())
-    |> Map.merge(data)
+    user_data =
+      user
+      |> Map.take(CacheUser.keys())
+      |> Map.merge(Account.default_data())
+      |> Map.merge(data)
+
+    %CacheUser{
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      password: user.password,
+      icon: user.icon,
+      colour: user.colour,
+      roles: user.roles,
+      permissions: user.permissions,
+      restrictions: user.restrictions,
+      restricted_until: user.restricted_until,
+      shadowbanned: user.shadowbanned,
+      last_login: user.last_login,
+      last_played: user.last_played,
+      last_logout: user.last_logout,
+      discord_id: user.discord_id,
+      discord_dm_channel_id: user.discord_dm_channel_id,
+      steam_id: user.steam_id,
+      smurf_of_id: user.smurf_of_id,
+      inserted_at: user.inserted_at,
+
+      # User data fields
+      rank: user_data.rank,
+      country: user_data.country,
+      bot: user_data.bot,
+      email_change_code: user_data.email_change_code,
+      last_login_mins: user_data.last_login_mins,
+      lobby_hash: user_data.lobby_hash,
+      hw_hash: user_data.hw_hash,
+      chobby_hash: user_data.chobby_hash,
+      lobby_client: user_data.lobby_client,
+      print_client_messages: user_data.print_client_messages,
+      print_server_messages: user_data.print_server_messages,
+      discord_dm_channel: user_data.discord_dm_channel
+    }
   end
 
   @doc """
@@ -230,8 +270,8 @@ defmodule Teiserver.Account.UserCacheLib do
   # Persists the changes into the database so they will
   # be pulled out next time the user is accessed/recached
   # The special case here is to prevent the benchmark and test users causing issues
-  @spec persist_user(CacheUser.t()) :: CacheUser.t() | nil
-  defp persist_user(%{name: "test_" <> _}), do: nil
+  @spec persist_user(CacheUser.t() | map()) :: CacheUser.t() | map() | nil
+  defp persist_user(%{name: "test_" <> _rest}), do: nil
 
   defp persist_user(user) do
     db_user = Account.get_user!(user.id)
@@ -247,7 +287,7 @@ defmodule Teiserver.Account.UserCacheLib do
     Account.script_update_user(db_user, Map.put(obj_attrs, "data", data))
   end
 
-  @spec update_user(CacheUser.t(), [persist: boolean()] | nil) :: CacheUser.t()
+  @spec update_user(CacheUser.t() | map(), [persist: boolean()] | nil) :: CacheUser.t() | map()
   def update_user(user, opts \\ []) do
     persist = Keyword.get(opts, :persist, false)
     Teiserver.cache_put(:users, user.id, user)
@@ -255,7 +295,7 @@ defmodule Teiserver.Account.UserCacheLib do
     user
   end
 
-  @spec update_cache_user(T.userid(), map()) :: CacheUser.t()
+  @spec update_cache_user(T.userid(), map()) :: CacheUser.t() | map()
   def update_cache_user(userid, data) do
     user = get_user_by_id(userid)
     new_user = Map.merge(user, data)

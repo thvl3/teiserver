@@ -1,14 +1,20 @@
 defmodule Teiserver.Account.UserLib do
   @moduledoc false
+
+  alias Phoenix.PubSub
+  alias Teiserver.Account
+  alias Teiserver.Account.RoleLib
+  alias Teiserver.Account.User
+  alias Teiserver.Account.UserQueries
+  alias Teiserver.CacheUser
+  alias Teiserver.Helper.StylingHelper
+  alias Teiserver.Logging
   use TeiserverWeb, :library_newform
   require Logger
-  alias Phoenix.PubSub
-  alias Teiserver.{Account, Logging}
-  alias Teiserver.Account.{User, RoleLib, UserQueries}
 
   # Functions
   @spec icon :: String.t()
-  def icon(), do: "fa-solid fa-user"
+  def icon, do: "fa-solid fa-user"
 
   @spec colours :: atom
   def colours, do: :success
@@ -44,7 +50,7 @@ defmodule Teiserver.Account.UserLib do
   end
 
   @spec make_bot_password() :: String.t()
-  def make_bot_password() do
+  def make_bot_password do
     :crypto.strong_rand_bytes(64) |> Base.encode64(padding: false) |> binary_part(0, 64)
   end
 
@@ -65,7 +71,7 @@ defmodule Teiserver.Account.UserLib do
   end
 
   @spec count_users() :: integer
-  def count_users() do
+  def count_users do
     count_users([])
   end
 
@@ -150,7 +156,7 @@ defmodule Teiserver.Account.UserLib do
       |> broadcast_create_user()
 
     case res do
-      {:ok, user} -> {:ok, Teiserver.CacheUser.post_user_creation_actions(user, ip)}
+      {:ok, user} -> {:ok, CacheUser.post_user_creation_actions(user, ip)}
       err -> err
     end
   end
@@ -271,7 +277,7 @@ defmodule Teiserver.Account.UserLib do
     {:ok, user}
   end
 
-  def broadcast_create_user(v, _), do: v
+  def broadcast_create_user(v, _reason), do: v
 
   def broadcast_update_user(u), do: broadcast_update_user(u, :update)
 
@@ -285,13 +291,13 @@ defmodule Teiserver.Account.UserLib do
     {:ok, user}
   end
 
-  def broadcast_update_user(v, _), do: v
+  def broadcast_update_user(v, _reason), do: v
 
   def merge_default_params(user_params) do
     Map.merge(
       %{
-        "icon" => "fa-solid fa-" <> Teiserver.Helper.StylingHelper.random_icon(),
-        "colour" => Teiserver.Helper.StylingHelper.random_colour()
+        "icon" => "fa-solid fa-" <> StylingHelper.random_icon(),
+        "colour" => StylingHelper.random_colour()
       },
       user_params
     )
@@ -318,7 +324,7 @@ defmodule Teiserver.Account.UserLib do
     {:error, "Invalid credentials"}
   end
 
-  def authenticate_user(_conn, _, "") do
+  def authenticate_user(_conn, _email, "") do
     Argon2.no_user_verify()
     Argon2.no_user_verify()
     {:error, "Invalid credentials"}
@@ -382,7 +388,7 @@ defmodule Teiserver.Account.UserLib do
 
   @spec has_access!(integer() | map(), Plug.Conn.t()) :: boolean
   def has_access!(target_user, conn) do
-    {result, _} = has_access(target_user, conn)
+    {result, _msg} = has_access(target_user, conn)
     result
   end
 
@@ -397,16 +403,16 @@ defmodule Teiserver.Account.UserLib do
   end
 
   @spec list_restrictions :: list
-  def list_restrictions() do
+  def list_restrictions do
     Teiserver.store_get(:restriction_lookup_store, :categories)
     |> Enum.map(fn key ->
       {key, Teiserver.store_get(:restriction_lookup_store, key)}
     end)
   end
 
-  defp can_login(user) do
+  defp can_login(%User{} = user) do
     cond do
-      Teiserver.CacheUser.is_restricted?(user, ["Login"]) ->
+      Account.restricted?(user, ["Login"]) ->
         {:error,
          "Your account is currently suspended. Check the suspension's status at https://discord.gg/beyond-all-reason -> #moderation-bot"}
 

@@ -1,16 +1,18 @@
 defmodule TeiserverWeb.Admin.OAuthApplicationController do
+  alias Ecto.Changeset
+  alias Teiserver.Account
+  alias Teiserver.Account.AuthLib
+  alias Teiserver.OAuth
+  alias Teiserver.OAuth.Application
+  alias Teiserver.OAuth.ApplicationQueries
+
   use TeiserverWeb, :controller
 
-  alias Teiserver.OAuth.{Application, ApplicationQueries}
-  alias Teiserver.{OAuth, Account}
-
   plug Bodyguard.Plug.Authorize,
-    # The policy should be Admin or something fairly high. But while we're
-    # developping the new lobby, it's easier if this is allowed for any
-    # contributors
-    policy: Teiserver.Staff,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
+    policy: Teiserver.Staff.Admin,
     action: {Phoenix.Controller, :action_name},
-    user: {Teiserver.Account.AuthLib, :current_user}
+    user: {AuthLib, :current_user}
 
   plug :add_breadcrumb, name: "Admin", url: "/teiserver/admin"
   plug :add_breadcrumb, name: "OAuth Applications", url: "/teiserver/admin/oauth_application"
@@ -18,7 +20,7 @@ defmodule TeiserverWeb.Admin.OAuthApplicationController do
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, _params) do
     applications = ApplicationQueries.list_applications()
-    stats = ApplicationQueries.get_stats(Enum.map(applications, fn app -> app.id end))
+    stats = applications |> Enum.map(fn app -> app.id end) |> ApplicationQueries.get_stats()
 
     conn
     |> assign(:page_title, "BAR - oauth apps")
@@ -66,7 +68,7 @@ defmodule TeiserverWeb.Admin.OAuthApplicationController do
     end
   end
 
-  def create(conn, _),
+  def create(conn, _params),
     do:
       conn
       |> put_status(400)
@@ -84,11 +86,12 @@ defmodule TeiserverWeb.Admin.OAuthApplicationController do
   defp scope_description("tachyon.lobby"), do: "for autohost"
   defp scope_description("admin.map"), do: "for CI, to setup maps data in teiserver"
   defp scope_description("admin.engine"), do: "for CI, to setup engine data in teiserver"
-  defp scope_description(_), do: nil
+  defp scope_description("admin.user"), do: "create users programatically. for load testing"
+  defp scope_description(_scope), do: nil
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, assigns) do
-    case ApplicationQueries.get_application_by_id(Map.get(assigns, "id")) do
+    case assigns |> Map.get("id") |> ApplicationQueries.get_application_by_id() do
       %Application{} = app ->
         render_show(conn, app)
 
@@ -101,9 +104,9 @@ defmodule TeiserverWeb.Admin.OAuthApplicationController do
 
   @spec edit(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def edit(conn, assigns) do
-    case ApplicationQueries.get_application_by_id(Map.get(assigns, "id")) do
+    case assigns |> Map.get("id") |> ApplicationQueries.get_application_by_id() do
       %Application{} = app ->
-        changeset = OAuth.change_application(Map.put(app, :owner_email, app.owner.email))
+        changeset = app |> Map.put(:owner_email, app.owner.email) |> OAuth.change_application()
 
         conn
         |> assign(:page_title, "BAR - edit oauth app #{app.name}")
@@ -122,7 +125,7 @@ defmodule TeiserverWeb.Admin.OAuthApplicationController do
 
   @spec update(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def update(conn, assigns) do
-    case ApplicationQueries.get_application_by_id(Map.get(assigns, "id")) do
+    case assigns |> Map.get("id") |> ApplicationQueries.get_application_by_id() do
       %Application{} = app ->
         attrs = form_to_app(Map.get(assigns, "application", %{}), Map.get(assigns, "scopes", %{}))
 
@@ -153,7 +156,7 @@ defmodule TeiserverWeb.Admin.OAuthApplicationController do
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, assigns) do
-    case ApplicationQueries.get_application_by_id(Map.get(assigns, "id")) do
+    case assigns |> Map.get("id") |> ApplicationQueries.get_application_by_id() do
       %Application{} = app ->
         case OAuth.delete_application(app) do
           :ok ->
@@ -199,7 +202,7 @@ defmodule TeiserverWeb.Admin.OAuthApplicationController do
 
   defp fill_email_error(changeset) do
     if Map.has_key?(changeset.data, "owner_id") and is_nil(Map.get(changeset.data, "owner_id")) do
-      Ecto.Changeset.add_error(
+      Changeset.add_error(
         changeset,
         :owner_email,
         "No user found for email #{Map.get(changeset.data, "owner_email")}"
@@ -215,7 +218,7 @@ defmodule TeiserverWeb.Admin.OAuthApplicationController do
       %{^key => value} when is_binary(value) ->
         Map.put(m, key, String.split(value, ",", trim: true) |> Enum.map(&String.trim/1))
 
-      _ ->
+      _other ->
         m
     end
   end

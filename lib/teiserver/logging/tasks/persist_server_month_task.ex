@@ -1,13 +1,15 @@
 defmodule Teiserver.Logging.Tasks.PersistServerMonthTask do
   @moduledoc false
-  use Oban.Worker, queue: :teiserver
+
   alias Teiserver.Logging
   alias Teiserver.Logging.ServerDayLogLib
+  alias Teiserver.Logging.Tasks.PersistServerMonthTask
+  use Oban.Worker, queue: :teiserver
   import Ecto.Query, warn: false
 
   @impl Oban.Worker
   @spec perform(any) :: :ok
-  def perform(_) do
+  def perform(_job) do
     log =
       case Logging.get_last_server_month_log() do
         nil ->
@@ -20,7 +22,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerMonthTask do
 
     if log != nil do
       %{}
-      |> Teiserver.Logging.Tasks.PersistServerMonthTask.new()
+      |> PersistServerMonthTask.new()
       |> Oban.insert()
     end
 
@@ -29,7 +31,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerMonthTask do
 
   # For when there are no existing logs
   # we need to ensure the earliest log is from last month, not this month
-  defp perform_first_time() do
+  defp perform_first_time do
     first_logs =
       Logging.list_server_day_logs(
         order: "Oldest first",
@@ -62,7 +64,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerMonthTask do
             |> Enum.zip(user_activity_logs)
             |> ServerDayLogLib.aggregate_day_logs()
 
-          {:ok, _} =
+          {:ok, _log} =
             Logging.create_server_month_log(%{
               year: log.date.year,
               month: log.date.month,
@@ -71,7 +73,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerMonthTask do
             })
         end
 
-      _ ->
+      _empty ->
         nil
     end
   end
@@ -104,7 +106,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerMonthTask do
         |> Enum.zip(user_activity_logs)
         |> ServerDayLogLib.aggregate_day_logs()
 
-      {:ok, _} =
+      {:ok, _log} =
         Logging.create_server_month_log(%{
           year: year,
           month: month,
@@ -117,7 +119,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerMonthTask do
   end
 
   @spec month_so_far() :: map()
-  def month_so_far() do
+  def month_so_far do
     now = Timex.now()
 
     user_activity_logs =

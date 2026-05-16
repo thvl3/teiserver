@@ -3,9 +3,12 @@ defmodule Teiserver.Battle.SplitNoobsTest do
   Can run all balance tests via
   mix test --only balance_test
   """
-  use ExUnit.Case
-  @moduletag :balance_test
+
   alias Teiserver.Battle.Balance.SplitNoobs
+
+  use ExUnit.Case
+
+  @moduletag :balance_test
 
   test "can process expanded_group" do
     # https://server5.beyondallreason.info/battle/2092529/players
@@ -322,7 +325,8 @@ defmodule Teiserver.Battle.SplitNoobsTest do
 
   test "Very strong captain will usually have noobiest noob" do
     # After brute force result is calculated there will be some remaining weak players to draft
-    # The team that gets pick priority will be determined by a combination of team rating and captain rating
+    # The team that gets pick priority will be determined by a
+    # combination of team rating and captain rating
     # preferring lower for both
     expanded_group = [
       %{

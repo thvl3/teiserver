@@ -1,7 +1,9 @@
 defmodule Teiserver.Moderation.ResponseLib do
   @moduledoc false
-  use TeiserverWeb, :library
+
+  alias Teiserver.Moderation.ActionLib
   alias Teiserver.Moderation.Response
+  use TeiserverWeb, :library
 
   # Functions
   @spec icon :: String.t()
@@ -11,13 +13,13 @@ defmodule Teiserver.Moderation.ResponseLib do
   def colour, do: :info2
 
   @spec list_actions() :: [{String.t(), String.t()}]
-  def list_actions() do
+  def list_actions do
     [
       {"Ignore", "fa-solid fa-clock"},
-      {"Warn", Teiserver.Moderation.ActionLib.action_icon("Warn")},
-      {"Mute", Teiserver.Moderation.ActionLib.action_icon("Mute")},
-      {"Suspend", Teiserver.Moderation.ActionLib.action_icon("Suspend")},
-      {"Ban", Teiserver.Moderation.ActionLib.action_icon("Ban")}
+      {"Warn", ActionLib.action_icon("Warn")},
+      {"Mute", ActionLib.action_icon("Mute")},
+      {"Suspend", ActionLib.action_icon("Suspend")},
+      {"Ban", ActionLib.action_icon("Ban")}
     ]
   end
 
@@ -38,8 +40,8 @@ defmodule Teiserver.Moderation.ResponseLib do
   end
 
   @spec _search(Ecto.Query.t(), atom(), any()) :: Ecto.Query.t()
-  def _search(query, _, ""), do: query
-  def _search(query, _, nil), do: query
+  def _search(query, _key, ""), do: query
+  def _search(query, _key, nil), do: query
 
   def _search(query, :user_id, user_id) do
     from responses in query,

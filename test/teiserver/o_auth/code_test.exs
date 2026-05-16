@@ -1,10 +1,14 @@
 defmodule Teiserver.OAuth.CodeTest do
-  use Teiserver.DataCase, async: true
+  alias Plug.Conn
+  alias Plug.Test
   alias Teiserver.OAuth
   alias Teiserver.OAuthFixtures
+  alias Teiserver.TeiserverTestLib
+  alias Timex.Duration
+  use Teiserver.DataCase, async: true
 
   setup do
-    user = Teiserver.TeiserverTestLib.new_user()
+    user = TeiserverTestLib.new_user()
 
     {:ok, app} =
       OAuth.create_application(%{
@@ -19,14 +23,14 @@ defmodule Teiserver.OAuth.CodeTest do
   end
 
   test "can get valid code", %{user: user, app: app} do
-    assert {:ok, code, _} = create_code(user, app)
+    assert {:ok, code, _attrs} = create_code(user, app)
     assert {:ok, ^code} = OAuth.get_valid_code(code.value)
     assert {:error, :no_code} = OAuth.get_valid_code(nil)
   end
 
   test "cannot retrieve expired code", %{user: user, app: app} do
     yesterday = Timex.shift(Timex.now(), days: -1)
-    assert {:ok, code, _} = create_code(user, app, expires_at: yesterday)
+    assert {:ok, code, _attrs} = create_code(user, app, expires_at: yesterday)
     assert {:error, :expired} = OAuth.get_valid_code(code.value)
   end
 
@@ -65,8 +69,8 @@ defmodule Teiserver.OAuth.CodeTest do
   test "must use valid verifier", %{user: user, app: app} do
     assert {:ok, code, attrs} = create_code(user, app)
     attrs = Map.put(attrs, :id, app.id)
-    no_match = Base.hex_encode32(:crypto.strong_rand_bytes(38), padding: false)
-    assert {:error, _} = OAuth.exchange_code(code, no_match)
+    no_match = :crypto.strong_rand_bytes(38) |> Base.hex_encode32(padding: false)
+    assert {:error, _reason} = OAuth.exchange_code(code, no_match)
 
     no_match =
       "lollollollollollollollollollollollollollollollollollollollollollollollollollollollollollollollollollollollollollollollollollol"
@@ -96,8 +100,12 @@ defmodule Teiserver.OAuth.CodeTest do
   end
 
   test "can delete expired codes", %{user: user, app: app} do
-    assert {:ok, expired_code, _} = create_code(user, app, expires_at: ~U[1980-01-01 12:23:34Z])
-    assert {:ok, valid_code, _} = create_code(user, app, expires_at: ~U[2500-01-01 12:23:34Z])
+    assert {:ok, expired_code, _expired_attrs} =
+             create_code(user, app, expires_at: ~U[1980-01-01 12:23:34Z])
+
+    assert {:ok, valid_code, _valid_attrs} =
+             create_code(user, app, expires_at: ~U[2500-01-01 12:23:34Z])
+
     count = OAuth.delete_expired_codes()
     assert count == 1
     assert {:error, :no_code} = OAuth.get_valid_code(expired_code.value)
@@ -105,7 +113,7 @@ defmodule Teiserver.OAuth.CodeTest do
   end
 
   test "can pass custom time when deleting codes", %{user: user, app: app} do
-    assert {:ok, code, _} = create_code(user, app, expires_at: ~U[2500-01-01 12:23:34Z])
+    assert {:ok, code, _attrs} = create_code(user, app, expires_at: ~U[2500-01-01 12:23:34Z])
     now = DateTime.add(code.expires_at, 1, :day)
     count = OAuth.delete_expired_codes(now)
     assert count == 1
@@ -119,23 +127,23 @@ defmodule Teiserver.OAuth.CodeTest do
 
   test "correct parsing of basic auth" do
     conn =
-      Plug.Test.conn(:post, "/irrelevant")
-      |> Plug.Conn.put_req_header("authorization", "Basic dXNlcjE6cGFzczElM0QlM0Q=")
+      Test.conn(:post, "/irrelevant")
+      |> Conn.put_req_header("authorization", "Basic dXNlcjE6cGFzczElM0QlM0Q=")
 
     assert {"user1", "pass1=="} == OAuth.parse_basic_auth(conn)
   end
 
   test "correct error for garbage basic auth header" do
     conn =
-      Plug.Test.conn(:post, "/irrelevant")
-      |> Plug.Conn.put_req_header("authorization", "Basic dXNlcjE6cGFzczElM0QlM0")
+      Test.conn(:post, "/irrelevant")
+      |> Conn.put_req_header("authorization", "Basic dXNlcjE6cGFzczElM0QlM0")
 
     assert :error = OAuth.parse_basic_auth(conn)
   end
 
   defp create_code_attrs(user, app, opts \\ []) do
     expires_at =
-      Keyword.get(opts, :expires_at, Timex.add(DateTime.utc_now(), Timex.Duration.from_days(1)))
+      Keyword.get(opts, :expires_at, Timex.add(DateTime.utc_now(), Duration.from_days(1)))
 
     OAuthFixtures.code_attrs(user.id, app)
     |> Map.put(:expires_at, expires_at)

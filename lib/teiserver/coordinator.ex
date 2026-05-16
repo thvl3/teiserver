@@ -1,12 +1,14 @@
 defmodule Teiserver.Coordinator do
   @moduledoc false
-  alias Teiserver.{Battle, CacheUser}
+  alias Teiserver.Battle
+  alias Teiserver.CacheUser
   alias Teiserver.Data.Types, as: T
+  alias Teiserver.Throttles
   require Logger
 
   @spec start_coordinator() ::
           {:error, {:already_started, pid()}} | DynamicSupervisor.on_start_child()
-  def start_coordinator() do
+  def start_coordinator do
     case get_coordinator_pid() do
       nil ->
         # Start the supervisor server
@@ -21,17 +23,17 @@ defmodule Teiserver.Coordinator do
   end
 
   @spec get_coordinator_userid() :: T.userid()
-  def get_coordinator_userid() do
+  def get_coordinator_userid do
     Teiserver.cache_get(:application_metadata_cache, "teiserver_coordinator_userid")
   end
 
   @spec get_coordinator_pid() :: pid() | nil
-  def get_coordinator_pid() do
+  def get_coordinator_pid do
     case Horde.Registry.lookup(Teiserver.ServerRegistry, "CoordinatorServer") do
-      [{pid, _}] ->
+      [{pid, _val}] ->
         pid
 
-      _ ->
+      _other ->
         nil
     end
   end
@@ -56,21 +58,21 @@ defmodule Teiserver.Coordinator do
   @spec get_consul_pid(T.lobby_id()) :: pid() | nil
   def get_consul_pid(lobby_id) do
     case Horde.Registry.lookup(Teiserver.ConsulRegistry, lobby_id) do
-      [{pid, _}] ->
+      [{pid, _val}] ->
         pid
 
-      _ ->
+      _other ->
         nil
     end
   end
 
   @spec start_all_consuls() :: :ok
-  def start_all_consuls() do
+  def start_all_consuls do
     Battle.list_lobby_ids()
     |> Enum.each(fn id ->
       case get_consul_pid(id) do
         nil -> start_consul(id)
-        _ -> :ok
+        _pid -> :ok
       end
     end)
   end
@@ -90,7 +92,7 @@ defmodule Teiserver.Coordinator do
   end
 
   @spec cast_consul(T.lobby_id(), any) :: any
-  def cast_consul(nil, _), do: :ok
+  def cast_consul(nil, _msg), do: :ok
 
   def cast_consul(lobby_id, msg) when is_integer(lobby_id) do
     case get_consul_pid(lobby_id) do
@@ -100,7 +102,7 @@ defmodule Teiserver.Coordinator do
   end
 
   @spec send_consul(T.lobby_id(), any) :: any
-  def send_consul(nil, _), do: :ok
+  def send_consul(nil, _msg), do: :ok
 
   def send_consul(lobby_id, msg) when is_integer(lobby_id) do
     case get_consul_pid(lobby_id) do
@@ -121,7 +123,7 @@ defmodule Teiserver.Coordinator do
 
           # If the process has somehow died, we just return nil
         catch
-          :exit, _ ->
+          :exit, _reason ->
             nil
         end
     end
@@ -131,21 +133,21 @@ defmodule Teiserver.Coordinator do
   @spec get_balancer_pid(T.lobby_id()) :: pid() | nil
   def get_balancer_pid(lobby_id) do
     case Horde.Registry.lookup(Teiserver.BalancerRegistry, lobby_id) do
-      [{pid, _}] ->
+      [{pid, _val}] ->
         pid
 
-      _ ->
+      _other ->
         nil
     end
   end
 
   @spec start_all_balancers() :: :ok
-  def start_all_balancers() do
+  def start_all_balancers do
     Battle.list_lobby_ids()
     |> Enum.each(fn id ->
       case get_balancer_pid(id) do
         nil -> start_balancer(id)
-        _ -> :ok
+        _pid -> :ok
       end
     end)
   end
@@ -165,7 +167,7 @@ defmodule Teiserver.Coordinator do
   end
 
   @spec cast_balancer(T.lobby_id(), any) :: any
-  def cast_balancer(nil, _), do: :ok
+  def cast_balancer(nil, _msg), do: :ok
 
   def cast_balancer(lobby_id, msg) when is_integer(lobby_id) do
     case get_balancer_pid(lobby_id) do
@@ -175,7 +177,7 @@ defmodule Teiserver.Coordinator do
   end
 
   @spec send_balancer(T.lobby_id(), any) :: any
-  def send_balancer(nil, _), do: :ok
+  def send_balancer(nil, _msg), do: :ok
 
   def send_balancer(lobby_id, msg) when is_integer(lobby_id) do
     case get_balancer_pid(lobby_id) do
@@ -196,7 +198,7 @@ defmodule Teiserver.Coordinator do
 
           # If the process has somehow died, we just return nil
         catch
-          :exit, _ ->
+          :exit, _reason ->
             nil
         end
     end
@@ -226,7 +228,7 @@ defmodule Teiserver.Coordinator do
         DynamicSupervisor.terminate_child(Teiserver.Coordinator.BalancerDynamicSupervisor, p)
     end
 
-    Teiserver.Throttles.stop_throttle("LobbyThrottle:#{lobby_id}")
+    Throttles.stop_throttle("LobbyThrottle:#{lobby_id}")
     :ok
   end
 
@@ -244,7 +246,7 @@ defmodule Teiserver.Coordinator do
           "You have just received a formal warning, reason: #{report.response_text}."
         )
 
-      _ ->
+      _action ->
         nil
     end
 
@@ -257,14 +259,14 @@ defmodule Teiserver.Coordinator do
 
   # Commands for the coordinator account to perform
   @spec send_to_host(T.userid(), String.t()) :: :ok
-  def send_to_host(nil, _), do: :ok
+  def send_to_host(nil, _msg), do: :ok
 
   def send_to_host(lobby_id, msg) do
     send_to_host(get_coordinator_userid(), lobby_id, msg)
   end
 
   @spec send_to_host(T.userid(), T.userid(), String.t()) :: :ok
-  def send_to_host(nil, _, _), do: :ok
+  def send_to_host(nil, _lobby_id, _msg), do: :ok
 
   def send_to_host(from_id, lobby_id, msg) do
     lobby = Battle.get_lobby(lobby_id)
@@ -288,7 +290,7 @@ defmodule Teiserver.Coordinator do
 
   # Debug stuff
   @spec list_all_internal_servers :: [T.lobby_id()]
-  def list_all_internal_servers() do
+  def list_all_internal_servers do
     Horde.Registry.select(Teiserver.ServerRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
   end
 end

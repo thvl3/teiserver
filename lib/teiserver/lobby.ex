@@ -3,12 +3,25 @@ defmodule Teiserver.Lobby do
   For handling the in-memory instances of lobbies
   """
 
+  alias ExULID.ULID
   alias Phoenix.PubSub
-  require Logger
-  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
-  alias Teiserver.{Account, CacheUser, Client, Battle, Coordinator, LobbyIdServer, Telemetry}
+  alias Teiserver.Account
+  alias Teiserver.Account.Auth
+  alias Teiserver.Battle
+  alias Teiserver.Battle.LobbyThrottle
+  alias Teiserver.CacheUser
+  alias Teiserver.Client
+  alias Teiserver.Coordinator
   alias Teiserver.Data.Types, as: T
-  alias Teiserver.Lobby.{ChatLib, LobbyLib}
+  alias Teiserver.Lobby.ChatLib
+  alias Teiserver.Lobby.LobbyLib
+  alias Teiserver.LobbyIdServer
+  alias Teiserver.Telemetry
+  alias Teiserver.Throttles
+
+  require Logger
+
+  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
 
   @spec icon :: String.t()
   def icon, do: "fa-solid fa-dungeon"
@@ -40,7 +53,13 @@ defmodule Teiserver.Lobby do
   end
 
   @spec create_lobby(map()) :: T.lobby()
-  def create_lobby(%{founder_id: _, founder_name: _, name: _} = lobby) do
+  def create_lobby(
+        %{
+          founder_id: _founder_id,
+          founder_name: _founder_name,
+          name: _name
+        } = lobby
+      ) do
     passworded = Map.get(lobby, :password) != nil
 
     # Needs to be supplied a map with:
@@ -85,11 +104,7 @@ defmodule Teiserver.Lobby do
         display_name: lobby.name,
         teaser: "",
 
-        # Used to indicate the lobby is subject to a lobby policy
-        lobby_policy_id: nil,
-
         # Meta data
-        tournament: false,
         silence: false,
         in_progress: false,
         started_at: nil
@@ -124,9 +139,9 @@ defmodule Teiserver.Lobby do
 
   @spec start_battle_lobby_throttle(T.lobby_id()) :: pid()
   def start_battle_lobby_throttle(battle_lobby_id) do
-    Teiserver.Throttles.start_throttle(
+    Throttles.start_throttle(
       battle_lobby_id,
-      Teiserver.Battle.LobbyThrottle,
+      LobbyThrottle,
       "battle_lobby_throttle_#{battle_lobby_id}"
     )
   end
@@ -141,7 +156,7 @@ defmodule Teiserver.Lobby do
         {:battle_lobby_throttle, :closed}
       )
 
-    Teiserver.Throttles.stop_throttle("LobbyThrottle:#{battle_lobby_id}")
+    Throttles.stop_throttle("LobbyThrottle:#{battle_lobby_id}")
     :ok
   end
 
@@ -156,7 +171,7 @@ defmodule Teiserver.Lobby do
 
   # Used to send the user PID a join battle command
   @spec do_force_add_user_to_lobby(T.client(), T.lobby_id()) :: :ok | nil
-  defp do_force_add_user_to_lobby(nil, _), do: nil
+  defp do_force_add_user_to_lobby(nil, _lobby_id), do: nil
 
   defp do_force_add_user_to_lobby(client, lobby_id) do
     Telemetry.log_simple_server_event(client.userid, "lobby.force_add_user_to_lobby")
@@ -176,7 +191,6 @@ defmodule Teiserver.Lobby do
       }
     )
 
-    # credo:disable-for-next-line Credo.Check.Design.TagTODO
     # TODO: Depreciate this
     if client != nil and client.protocol == :spring do
       send(client.tcp_pid, {:force_join_battle, lobby_id, script_password})
@@ -319,7 +333,7 @@ defmodule Teiserver.Lobby do
   def kick_user_from_battle(userid, lobby_id) do
     user = Account.get_user_by_id(userid)
 
-    if CacheUser.is_moderator?(user) do
+    if Auth.admin?(user) or Auth.moderator?(user) do
       :ok
     else
       case do_remove_user_from_lobby(userid, lobby_id) do
@@ -400,7 +414,7 @@ defmodule Teiserver.Lobby do
   end
 
   @spec find_empty_lobby(function()) :: map() | nil
-  def find_empty_lobby(filter_func \\ fn _ -> true end) do
+  def find_empty_lobby(filter_func \\ fn _lobby -> true end) do
     empties =
       stream_lobbies()
       |> Stream.filter(fn lobby -> lobby.in_progress == false and Enum.empty?(lobby.players) end)
@@ -515,7 +529,6 @@ defmodule Teiserver.Lobby do
               {:failure, "Battle closed"}
 
             host_client ->
-              # credo:disable-for-next-line Credo.Check.Design.TagTODO
               # TODO: Depreciate
               send(host_client.tcp_pid, {:request_user_join_lobby, userid})
 
@@ -546,7 +559,7 @@ defmodule Teiserver.Lobby do
           {:failure, String.t()} | true
   def server_allows_join?(userid, lobby_id, password \\ nil) do
     lobby = get_lobby(lobby_id)
-    user = Account.get_user_by_id(userid)
+    user = Account.get_user(userid)
 
     # In theory this would never happen but it's possible to see this at startup when
     # not everything is loaded and ready, hence the case statement
@@ -565,14 +578,16 @@ defmodule Teiserver.Lobby do
 
     ignore_password =
       Enum.any?([
-        CacheUser.is_moderator?(user),
+        Auth.admin?(user),
+        Auth.moderator?(user),
         Enum.member?(user.roles, "Caster"),
         consul_reason in [:override_approve, :allow_friends]
       ])
 
     ignore_locked =
       Enum.any?([
-        CacheUser.is_moderator?(user),
+        Auth.admin?(user),
+        Auth.moderator?(user),
         Enum.member?(user.roles, "Caster"),
         consul_reason == :override_approve
       ])
@@ -593,7 +608,7 @@ defmodule Teiserver.Lobby do
       consul_response == false ->
         {:failure, consul_reason}
 
-      CacheUser.is_restricted?(user, ["All lobbies", "Joining existing lobbies"]) ->
+      Account.restricted?(user, ["All lobbies", "Joining existing lobbies"]) ->
         {:failure, "You are currently banned from joining lobbies"}
 
       true ->
@@ -606,7 +621,6 @@ defmodule Teiserver.Lobby do
     client = Client.get_client_by_id(userid)
 
     if client != nil and client.protocol == :spring do
-      # credo:disable-for-next-line Credo.Check.Design.TagTODO
       # TODO: SpringLegacy depreciation
       send(client.tcp_pid, {:join_battle_request_response, lobby_id, :accept, nil})
     end
@@ -646,7 +660,6 @@ defmodule Teiserver.Lobby do
     client = Client.get_client_by_id(userid)
 
     if client do
-      # credo:disable-for-next-line Credo.Check.Design.TagTODO
       # TODO: Depreciate
       send(client.tcp_pid, {:join_battle_request_response, lobby_id, :deny, reason})
     end
@@ -655,7 +668,7 @@ defmodule Teiserver.Lobby do
   end
 
   @spec force_change_client(T.userid(), T.userid(), map()) :: :ok
-  def force_change_client(_, nil, _), do: nil
+  def force_change_client(_changer_id, nil, _new_values), do: nil
 
   def force_change_client(changer_id, client_id, new_values) do
     case Client.get_client_by_id(client_id) do
@@ -681,8 +694,8 @@ defmodule Teiserver.Lobby do
   end
 
   @spec change_client_battle_status(map(), map()) :: map()
-  def change_client_battle_status(nil, _), do: nil
-  def change_client_battle_status(_, values) when values == %{}, do: nil
+  def change_client_battle_status(nil, _new_values), do: nil
+  def change_client_battle_status(_client, values) when values == %{}, do: nil
 
   def change_client_battle_status(client, new_values) do
     new_client = Map.merge(client, new_values)
@@ -690,14 +703,14 @@ defmodule Teiserver.Lobby do
   end
 
   @spec allow?(T.userid(), atom, T.lobby_id()) :: boolean()
-  def allow?(nil, _, _), do: false
-  def allow?(_, nil, _), do: false
-  def allow?(_, _, nil), do: false
+  def allow?(nil, _field, _lobby_id), do: false
+  def allow?(_userid, nil, _lobby_id), do: false
+  def allow?(_userid, _field, nil), do: false
 
   def allow?(userid, :saybattle, lobby_id), do: allow_say?(userid, lobby_id)
   def allow?(userid, :saybattleex, lobby_id), do: allow_say?(userid, lobby_id)
 
-  def allow?(_userid, :host, _), do: true
+  def allow?(_userid, :host, _lobby), do: true
 
   def allow?(changer, field, lobby_id) when is_integer(lobby_id),
     do: allow?(changer, field, get_lobby(lobby_id))
@@ -719,7 +732,7 @@ defmodule Teiserver.Lobby do
       bot == nil ->
         false
 
-      CacheUser.is_moderator?(changer.userid) == true ->
+      Auth.admin?(changer.userid) or Auth.moderator?(changer.userid) == true ->
         true
 
       lobby.founder_id == changer.userid ->
@@ -764,7 +777,7 @@ defmodule Teiserver.Lobby do
       )
 
     cond do
-      CacheUser.is_moderator?(changer.userid) == true ->
+      Auth.admin?(changer.userid) or Auth.moderator?(changer.userid) == true ->
         true
 
       # Basic stuff
@@ -807,7 +820,7 @@ defmodule Teiserver.Lobby do
       lobby.founder_id == userid ->
         true
 
-      CacheUser.is_moderator?(userid) ->
+      Auth.admin?(userid) or Auth.moderator?(userid) ->
         true
 
       lobby.silence ->
@@ -819,8 +832,8 @@ defmodule Teiserver.Lobby do
   end
 
   @spec new_script_password() :: String.t()
-  def new_script_password() do
-    ExULID.ULID.generate()
+  def new_script_password do
+    ULID.generate()
     |> Base.encode32(padding: false)
   end
 end

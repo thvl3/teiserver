@@ -1,9 +1,10 @@
 defmodule TeiserverWeb.Logging.MatchLogController do
-  use TeiserverWeb, :controller
+  alias Teiserver.Battle.ExportRawMatchMetricsTask
+  alias Teiserver.Helper.DatePresets
+  alias Teiserver.Helper.TimexHelper
   alias Teiserver.Logging
-  alias Teiserver.Helper.{TimexHelper, DatePresets}
-  alias Teiserver.Battle.{ExportRawMatchMetricsTask}
-  alias Teiserver.Logging.{MatchGraphLogsTask}
+  alias Teiserver.Logging.MatchGraphLogsTask
+  use TeiserverWeb, :controller
   import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
 
   plug(AssignPlug,
@@ -12,6 +13,7 @@ defmodule TeiserverWeb.Logging.MatchLogController do
   )
 
   plug Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Staff.Moderator,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}
@@ -136,7 +138,7 @@ defmodule TeiserverWeb.Logging.MatchLogController do
 
     if today == "#{month}/#{year}" do
       conn
-      |> redirect(to: Routes.logging_match_log_path(conn, :month_metrics_today))
+      |> redirect(to: ~p"/logging/match/month_metrics/today")
     else
       log = Logging.get_match_month_log({year, month})
 
@@ -161,7 +163,10 @@ defmodule TeiserverWeb.Logging.MatchLogController do
         {Timex.today().year, Timex.today().month - 1}
       end
 
-    last_month = Logging.get_match_month_log({lyear, lmonth}).data
+    last_month_data =
+      {lyear, lmonth}
+      |> Logging.get_match_month_log()
+      |> Map.get(:data)
 
     days_in_month = Timex.days_in_month(Timex.now())
     progress = round(Timex.today().day / days_in_month * 100)
@@ -170,7 +175,7 @@ defmodule TeiserverWeb.Logging.MatchLogController do
     |> assign(:year, Timex.today().year)
     |> assign(:month, Timex.today().month)
     |> assign(:data, data)
-    |> assign(:last_month, last_month)
+    |> assign(:last_month, last_month_data)
     |> assign(:progress, progress)
     |> add_breadcrumb(name: "Monthly - This month (partial)", url: conn.request_path)
     |> render("month_metrics_today_show.html")

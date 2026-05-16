@@ -1,13 +1,17 @@
 defmodule TeiserverWeb.Admin.BotControllerTest do
+  alias Teiserver.Bot
+  alias Teiserver.BotFixtures
+  alias Teiserver.Helpers.GeneralTestLib
+  alias Teiserver.OAuth
+  alias Teiserver.OAuth.CredentialQueries
+  alias Teiserver.OAuthFixtures
+  alias Teiserver.TeiserverTestLib
+
   use TeiserverWeb.ConnCase
 
-  alias Teiserver.{Bot, OAuth}
-  alias Teiserver.OAuth.CredentialQueries
-  alias Teiserver.{OAuthFixtures, BotFixtures}
-
   defp setup_user(_context) do
-    Central.Helpers.GeneralTestLib.conn_setup(Teiserver.TeiserverTestLib.admin_permissions())
-    |> Teiserver.TeiserverTestLib.conn_setup()
+    GeneralTestLib.conn_setup(TeiserverTestLib.admin_permissions())
+    |> TeiserverTestLib.conn_setup()
   end
 
   defp setup_bot(_context) do
@@ -143,7 +147,7 @@ defmodule TeiserverWeb.Admin.BotControllerTest do
       conn = delete(conn, ~p"/teiserver/admin/bot/#{bot.id}/credential/#{cred.id}")
       assert conn.status == 302
 
-      assert {:error, _} = OAuth.get_valid_credentials("client_id", "verysecret")
+      assert {:error, _reason} = OAuth.get_valid_credentials("client_id", "verysecret")
     end
 
     test "delete invalid id", %{conn: conn, bot: bot, app: app} do

@@ -1,9 +1,10 @@
 defmodule Teiserver.SpringRegressionTest do
+  alias Teiserver.Common.PubsubListener
+  alias Teiserver.Lobby
   use Teiserver.ServerCase, async: false
   require Logger
-  alias Teiserver.Lobby
+
   import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
-  alias Teiserver.Common.PubsubListener
 
   import Teiserver.TeiserverTestLib,
     only: [
@@ -40,7 +41,7 @@ defmodule Teiserver.SpringRegressionTest do
       _tags,
       battle_status,
       _battle_opened
-      | _
+      | _rest
     ] = reply
 
     assert opened =~ "BATTLEOPENED "

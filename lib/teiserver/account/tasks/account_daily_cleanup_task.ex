@@ -1,17 +1,18 @@
 defmodule Teiserver.Account.Tasks.DailyCleanupTask do
-  use Oban.Worker, queue: :cleanup
+  @moduledoc false
   alias Teiserver.Account
+  use Oban.Worker, queue: :cleanup
 
   @impl Oban.Worker
   @spec perform(any) :: :ok
-  def perform(_) do
+  def perform(_job) do
     days = Application.get_env(:teiserver, Teiserver)[:retention][:account_unverified]
 
     # Find all unverified users who registered over 14 days ago
     _id_list =
       Account.list_users(
         search: [
-          verified: false,
+          not_has_role: "Verified",
           inserted_before: Timex.shift(Timex.now(), days: -days)
         ],
         select: [:id],

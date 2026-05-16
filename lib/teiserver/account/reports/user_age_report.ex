@@ -1,14 +1,15 @@
 defmodule Teiserver.Account.UserAgeReport do
   @moduledoc false
+  alias Ecto.Adapters.SQL
+  alias Teiserver.Account
   alias Teiserver.Helper.DatePresets
-  alias Teiserver.{Account}
   alias Teiserver.Repo
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-chevron-up"
+  def icon, do: "fa-solid fa-chevron-up"
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Admin"
+  def permissions, do: "Moderator"
 
   @keys [
     "0 days",
@@ -71,7 +72,7 @@ defmodule Teiserver.Account.UserAgeReport do
     """
 
     user_ids =
-      case Ecto.Adapters.SQL.query(Repo, query, [start_date, end_date]) do
+      case SQL.query(Repo, query, [start_date, end_date]) do
         {:ok, results} ->
           results.rows |> List.flatten()
 
@@ -93,7 +94,7 @@ defmodule Teiserver.Account.UserAgeReport do
       |> Enum.group_by(&get_registration_age/1)
       |> Map.new(fn {rank, users} -> {rank, Enum.count(users)} end)
 
-    {bucketed_cumulative_registration_age, _} =
+    {bucketed_cumulative_registration_age, _total} =
       @keys
       |> Enum.reverse()
       |> Enum.map_reduce(0, fn key, acc ->
@@ -111,7 +112,7 @@ defmodule Teiserver.Account.UserAgeReport do
         fn %{inserted_at: inserted_at} ->
           Timex.diff(Timex.now(), inserted_at, :days)
         end,
-        fn _ ->
+        fn _user ->
           1
         end
       )

@@ -1,13 +1,14 @@
 defmodule Teiserver.Battle.LobbyServerTest do
   @moduledoc false
+
+  alias Teiserver.Coordinator
+  alias Teiserver.Lobby.LobbyLib
+  alias Teiserver.TeiserverTestLib
   # Cannot be async because some other tests will call for a list of all lobbies
   use Teiserver.DataCase, async: false
-  alias Teiserver.Lobby.LobbyLib
-  alias Teiserver.Coordinator
 
-  @tag :needs_attention
   test "server test" do
-    host = Teiserver.TeiserverTestLib.new_user()
+    host = TeiserverTestLib.new_user()
 
     lobby = %{
       id: 123,
@@ -52,7 +53,7 @@ defmodule Teiserver.Battle.LobbyServerTest do
     assert r == nil
 
     # Update lobby
-    LobbyLib.update_lobby(Map.put(lobby, :engine_name, "new engie"), nil, :reason)
+    lobby |> Map.put(:engine_name, "new engie") |> LobbyLib.update_lobby(nil, :reason)
 
     # No server
     # r = LobbyLib.update_lobby(Map.merge(lobby, %{engine_name: "new engie", id: -1}), nil, :reason)
@@ -61,7 +62,7 @@ defmodule Teiserver.Battle.LobbyServerTest do
   end
 
   test "rename test" do
-    host = Teiserver.TeiserverTestLib.new_user()
+    host = TeiserverTestLib.new_user()
 
     lobby = %{
       id: 123,

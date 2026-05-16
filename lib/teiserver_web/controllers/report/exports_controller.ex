@@ -1,6 +1,7 @@
 defmodule TeiserverWeb.Report.ExportsController do
+  alias Teiserver.Account
+  alias Teiserver.Game
   use TeiserverWeb, :controller
-  alias Teiserver.{Game, Account}
   import Teiserver.Account.AuthLib, only: [allow?: 2]
 
   plug(AssignPlug,
@@ -9,6 +10,7 @@ defmodule TeiserverWeb.Report.ExportsController do
   )
 
   plug Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Telemetry.Infolog,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}
@@ -27,7 +29,6 @@ defmodule TeiserverWeb.Report.ExportsController do
   def show(conn, %{"id" => id}) do
     module = get_module(id)
 
-    # credo:disable-for-next-line Credo.Check.Refactor.Apply
     if allow?(conn.assigns.current_user, apply(module, :permissions, [])) do
       assigns = module.show_form(conn)
 
@@ -42,7 +43,7 @@ defmodule TeiserverWeb.Report.ExportsController do
       |> render("#{id}.html")
     else
       conn
-      |> redirect(to: Routes.ts_reports_exports_path(conn, :index))
+      |> redirect(to: ~p"/teiserver/reports/exports")
     end
   end
 
@@ -50,7 +51,6 @@ defmodule TeiserverWeb.Report.ExportsController do
   def download(conn, %{"id" => id, "report" => report_params}) do
     module = get_module(id)
 
-    # credo:disable-for-next-line Credo.Check.Refactor.Apply
     if allow?(conn.assigns.current_user, apply(module, :permissions, [])) do
       {:file, file_path, file_name, content_type} = module.show_form(conn, report_params)
 
@@ -63,7 +63,7 @@ defmodule TeiserverWeb.Report.ExportsController do
       |> send_file(200, file_path)
     else
       conn
-      |> redirect(to: Routes.ts_reports_exports_path(conn, :index))
+      |> redirect(to: ~p"/teiserver/reports/exports")
     end
   end
 

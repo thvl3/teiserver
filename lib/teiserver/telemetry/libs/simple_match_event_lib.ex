@@ -1,17 +1,19 @@
 defmodule Teiserver.Telemetry.SimpleMatchEventLib do
   @moduledoc false
-  use TeiserverWeb, :library_newform
-  alias Teiserver.Telemetry
-  alias Teiserver.Telemetry.{SimpleMatchEvent, SimpleMatchEventQueries}
+
   alias Phoenix.PubSub
+  alias Teiserver.Telemetry
+  alias Teiserver.Telemetry.SimpleMatchEvent
+  alias Teiserver.Telemetry.SimpleMatchEventQueries
+  use TeiserverWeb, :library_newform
 
   @broadcast_event_types ~w()
 
   @spec colour :: atom
-  def colour(), do: :info2
+  def colour, do: :info2
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-chess-pawn"
+  def icon, do: "fa-chess-pawn"
 
   @spec log_simple_match_event(T.userid(), T.match_id(), String.t(), non_neg_integer) ::
           {:error, Ecto.Changeset} | {:ok, SimpleMatchEvent}
@@ -44,7 +46,7 @@ defmodule Teiserver.Telemetry.SimpleMatchEventLib do
 
         result
 
-      _ ->
+      _error ->
         result
     end
   end

@@ -4,11 +4,14 @@ defmodule Mix.Tasks.Teiserver.UpdateUserPermissions do
   mix teiserver.update_user_permissions
   """
 
-  use Mix.Task
-  require Logger
+  alias Ecto.Adapters.SQL
   alias Teiserver.Account
-  alias Teiserver.Repo
   alias Teiserver.Account.RoleLib
+  alias Teiserver.Repo
+
+  use Mix.Task
+
+  require Logger
 
   def run(_args) do
     Application.ensure_all_started(:teiserver)
@@ -35,12 +38,12 @@ defmodule Mix.Tasks.Teiserver.UpdateUserPermissions do
     end)
   end
 
-  defp get_user_ids() do
+  defp get_user_ids do
     query = """
       select id from account_users
     """
 
-    results = Ecto.Adapters.SQL.query!(Repo, query, [])
+    results = SQL.query!(Repo, query, [])
 
     results.rows
     |> Enum.map(fn [userid] ->

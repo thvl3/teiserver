@@ -1,11 +1,12 @@
 defmodule TeiserverWeb.Admin.AccoladeController do
-  use TeiserverWeb, :controller
-
   alias Teiserver.Account
   alias Teiserver.Account.Accolade
   alias Teiserver.Account.AccoladeLib
 
+  use TeiserverWeb, :controller
+
   plug Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Staff.Moderator,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}
@@ -98,7 +99,7 @@ defmodule TeiserverWeb.Admin.AccoladeController do
       {:ok, _accolade} ->
         conn
         |> put_flash(:info, "Accolade created successfully.")
-        |> redirect(to: Routes.ts_admin_accolade_path(conn, :index))
+        |> redirect(to: ~p"/teiserver/admin/accolades")
 
       {:error, %Ecto.Changeset{} = changeset} ->
         conn
@@ -128,7 +129,7 @@ defmodule TeiserverWeb.Admin.AccoladeController do
       {:ok, _accolade} ->
         conn
         |> put_flash(:info, "Accolade updated successfully.")
-        |> redirect(to: Routes.ts_admin_accolade_path(conn, :index))
+        |> redirect(to: ~p"/teiserver/admin/accolades")
 
       {:error, %Ecto.Changeset{} = changeset} ->
         conn
@@ -150,6 +151,6 @@ defmodule TeiserverWeb.Admin.AccoladeController do
 
     conn
     |> put_flash(:info, "Accolade deleted successfully.")
-    |> redirect(to: Routes.ts_admin_accolade_path(conn, :index))
+    |> redirect(to: ~p"/teiserver/admin/accolades")
   end
 end

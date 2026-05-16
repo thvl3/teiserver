@@ -1,8 +1,10 @@
 defmodule TeiserverWeb.Moderation.UserController do
-  use TeiserverWeb, :controller
-
-  alias Teiserver.{Account, Moderation}
+  alias Teiserver.Account
+  alias Teiserver.Account.CodeOfConductData
   alias Teiserver.Account.UserLib
+  alias Teiserver.Moderation
+
+  use TeiserverWeb, :controller
 
   plug(AssignPlug,
     site_menu_active: "moderation",
@@ -10,6 +12,7 @@ defmodule TeiserverWeb.Moderation.UserController do
   )
 
   plug(Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Account.Auth,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}
@@ -22,8 +25,8 @@ defmodule TeiserverWeb.Moderation.UserController do
   def show(conn, %{"id" => id}) do
     user = Account.get_user(id)
 
-    case Teiserver.Account.UserLib.has_access(user, conn) do
-      {true, _} ->
+    case UserLib.has_access(user, conn) do
+      {true, _role} ->
         reports_made =
           Moderation.list_reports(
             search: [
@@ -66,8 +69,8 @@ defmodule TeiserverWeb.Moderation.UserController do
         |> insert_recently(conn)
 
         conn
-        |> assign(:restrictions_lists, Teiserver.Account.UserLib.list_restrictions())
-        |> assign(:coc_lookup, Teiserver.Account.CodeOfConductData.flat_data())
+        |> assign(:restrictions_lists, UserLib.list_restrictions())
+        |> assign(:coc_lookup, CodeOfConductData.flat_data())
         |> assign(:user, user)
         |> assign(:reports_made, reports_made)
         |> assign(:reports_against, reports_against)
@@ -76,7 +79,7 @@ defmodule TeiserverWeb.Moderation.UserController do
         |> add_breadcrumb(name: "Show: #{user.name}", url: conn.request_path)
         |> render("show.html")
 
-      _ ->
+      _no_access ->
         conn
         |> put_flash(:danger, "Unable to access this user")
         |> redirect(to: ~p"/teiserver/admin/user")

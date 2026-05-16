@@ -1,20 +1,28 @@
 defmodule TeiserverWeb.Battle.MatchLive.Show do
   @moduledoc false
-  use TeiserverWeb, :live_view
-  alias Teiserver.{Account, Battle, Game, Telemetry}
-  alias Teiserver.Battle.{MatchLib, BalanceLib}
-  alias Teiserver.Helper.NumberHelper
-  alias Teiserver.Config
+
+  alias Openskill.Util
+  alias Teiserver.Account
   alias Teiserver.Account.AccoladeLib
-  import Central.Helpers.ComponentHelper
+  alias Teiserver.Battle
+  alias Teiserver.Battle.BalanceLib
+  alias Teiserver.Battle.MatchLib
+  alias Teiserver.Config
+  alias Teiserver.Game
+  alias Teiserver.Game.MatchRatingLib
+  alias Teiserver.Helper.NumberHelper
+  alias Teiserver.Helper.StylingHelper
+  alias Teiserver.Telemetry
+  use TeiserverWeb, :live_view
+  import Teiserver.Helpers.ComponentHelper
   import Teiserver.Helper.ColourHelper
 
-  @impl true
+  @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     socket =
       socket
       |> assign(:site_menu_active, "match")
-      |> assign(:view_colour, Teiserver.Battle.MatchLib.colours())
+      |> assign(:view_colour, MatchLib.colours())
       |> assign(:tab, "details")
       |> assign(
         :algorithm_options,
@@ -26,7 +34,7 @@ defmodule TeiserverWeb.Battle.MatchLive.Show do
     {:ok, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_params(%{"id" => id} = params, _url, socket) do
     socket =
       socket
@@ -67,12 +75,15 @@ defmodule TeiserverWeb.Battle.MatchLive.Show do
     |> assign(:page_title, "#{match_name} - Balance")
   end
 
-  # @impl true
+  # @impl Phoenix.LiveView
   # def handle_event("tab-select", %{"tab" => tab}, socket) do
   #   {:noreply, assign(socket, :tab, tab)}
   # end
 
-  defp get_match(%{assigns: %{id: id, algorithm: algorithm, current_user: current_user}} = socket) do
+  defp get_match(
+         %{assigns: %{id: id, algorithm: algorithm, current_user: current_user}} =
+           socket
+       ) do
     if connected?(socket) do
       match =
         Battle.get_match!(id,
@@ -112,8 +123,6 @@ defmodule TeiserverWeb.Battle.MatchLive.Show do
         )
         |> Enum.sort_by(fn m -> m.team_id end, &<=/2)
 
-      team_totals = calculate_team_totals(members)
-
       find_current_user =
         Enum.find(members, fn x ->
           x.user_id == current_user.id
@@ -131,7 +140,7 @@ defmodule TeiserverWeb.Battle.MatchLive.Show do
         |> Map.drop([nil])
         |> Map.filter(fn {_id, members} -> Enum.count(members) > 1 end)
         |> Map.keys()
-        |> Enum.zip(Teiserver.Helper.StylingHelper.bright_hex_colour_list())
+        |> Enum.zip(StylingHelper.bright_hex_colour_list())
         |> Enum.zip(~w(dice-one dice-two dice-three dice-four dice-five dice-six))
         |> Enum.map(fn {{party_id, colour}, idx} ->
           {party_id, {colour, idx}}
@@ -183,7 +192,7 @@ defmodule TeiserverWeb.Battle.MatchLive.Show do
           fn e ->
             e.event_type.name
           end,
-          fn _ ->
+          fn _event ->
             1
           end
         )
@@ -204,7 +213,7 @@ defmodule TeiserverWeb.Battle.MatchLive.Show do
           fn e ->
             {team_lookup[e.user_id] || -1, e.event_type.name}
           end,
-          fn _ ->
+          fn _event ->
             1
           end
         )
@@ -214,18 +223,17 @@ defmodule TeiserverWeb.Battle.MatchLive.Show do
         |> Enum.sort_by(fn v -> v end, &<=/2)
 
       balanced_members =
-        cond do
-          # It will go here if the match is unprocessed or if there are no rating logs e.g. unrated match
-          rating_logs == %{} ->
-            []
-
-          true ->
-            Enum.map(members, fn x ->
-              team_id = get_team_id(x.user_id, past_balance.team_players)
-              Map.put(x, :team_id, team_id)
-            end)
-            |> Enum.sort_by(fn m -> rating_logs[m.user.id].value["old_rating_value"] end, &>=/2)
-            |> Enum.sort_by(fn m -> m.team_id end, &<=/2)
+        if rating_logs == %{} do
+          # It will go here if the match is unprocessed or if
+          # there are no rating logs e.g. unrated match
+          []
+        else
+          Enum.map(members, fn x ->
+            team_id = get_team_id(x.user_id, past_balance.team_players)
+            Map.put(x, :team_id, team_id)
+          end)
+          |> Enum.sort_by(fn m -> rating_logs[m.user.id].value["old_rating_value"] end, &>=/2)
+          |> Enum.sort_by(fn m -> m.team_id end, &<=/2)
         end
 
       game_id =
@@ -247,7 +255,6 @@ defmodule TeiserverWeb.Battle.MatchLive.Show do
       |> assign(:match, match)
       |> assign(:match_name, match_name)
       |> assign(:members, members)
-      |> assign(:team_totals, team_totals)
       |> assign(:balanced_members, balanced_members)
       |> assign(:rating_logs, rating_logs)
       |> assign(:parties, parties)
@@ -309,7 +316,7 @@ defmodule TeiserverWeb.Battle.MatchLive.Show do
           end)
 
         team_ratings =
-          Openskill.Util.team_rating(simple_rating_logs)
+          Util.team_rating(simple_rating_logs)
 
         skill_text_values =
           Enum.map(team_ratings, fn {skill, _sigma_sq, _extra1, _extra2} ->
@@ -417,7 +424,7 @@ defmodule TeiserverWeb.Battle.MatchLive.Show do
   defp get_match_rating_status(match) do
     # Expecting to return an error explaining current match rating status
     # Unprocessed matches and matches with existing rating logs won't be rated again
-    {_, rating_status} = Teiserver.Game.MatchRatingLib.rate_match(match)
+    {_result, rating_status} = MatchRatingLib.rate_match(match)
 
     case rating_status do
       :invalid_game_type ->
@@ -455,7 +462,7 @@ defmodule TeiserverWeb.Battle.MatchLive.Show do
   @doc """
   Handles the dropdown for algorithm changing
   """
-  @impl true
+  @impl Phoenix.LiveView
   def handle_event("update-algorithm", event, socket) do
     [key] = event["_target"]
     value = event[key]
@@ -485,7 +492,7 @@ defmodule TeiserverWeb.Battle.MatchLive.Show do
     gift_window = Config.get_site_config_cache("teiserver.Accolade gift window")
     user_id = socket.assigns.current_user.id
     match_id = socket.assigns.id
-    {recipient_id, _} = Integer.parse(recipient_id)
+    {recipient_id, _rest} = Integer.parse(recipient_id)
 
     with {:ok, gift_count} <-
            check_gift_count(socket.assigns.current_user.id, gift_limit, gift_window),
@@ -542,7 +549,7 @@ defmodule TeiserverWeb.Battle.MatchLive.Show do
 
   def handle_event(
         "return-to-match",
-        _,
+        _params,
         socket
       ) do
     {:noreply,
@@ -654,64 +661,5 @@ defmodule TeiserverWeb.Battle.MatchLive.Show do
       </div>
     </div>
     """
-  end
-
-  @doc """
-  Calculates team totals for each team based on member stats.
-  Only calculates totals for teams with more than one player.
-  """
-  def calculate_team_totals(members) do
-    members
-    |> Enum.group_by(& &1.team_id)
-    |> Map.new(fn {team_id, team_members} ->
-      if length(team_members) <= 1 do
-        {team_id, nil}
-      else
-        stats =
-          Enum.reduce(
-            team_members,
-            %{
-              "damageDealt" => 0,
-              "damageReceived" => 0,
-              "metalProduced" => 0,
-              "metalUsed" => 0,
-              "energyProduced" => 0,
-              "energyUsed" => 0
-            },
-            fn member, acc ->
-              %{
-                "damageDealt" => acc["damageDealt"] + (member.stats["damageDealt"] || 0),
-                "damageReceived" => acc["damageReceived"] + (member.stats["damageReceived"] || 0),
-                "metalProduced" => acc["metalProduced"] + (member.stats["metalProduced"] || 0),
-                "metalUsed" => acc["metalUsed"] + (member.stats["metalUsed"] || 0),
-                "energyProduced" => acc["energyProduced"] + (member.stats["energyProduced"] || 0),
-                "energyUsed" => acc["energyUsed"] + (member.stats["energyUsed"] || 0)
-              }
-            end
-          )
-
-        {team_id,
-         %{
-           players: Enum.count(team_members),
-           stats: stats
-         }}
-      end
-    end)
-    |> Map.reject(fn {_team_id, value} -> is_nil(value) end)
-  end
-
-  @doc """
-  Determines if team totals should be shown.
-  Totals are only shown under the last player in teams with multiple players.
-  """
-  def should_show_team_total?(members, member) do
-    team_members = Enum.filter(members, &(&1.team_id == member.team_id))
-
-    if length(team_members) <= 1 do
-      false
-    else
-      last_member = List.last(team_members)
-      member.user_id == last_member.user_id
-    end
   end
 end

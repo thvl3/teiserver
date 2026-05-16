@@ -1,6 +1,7 @@
 defmodule TeiserverWeb.Components.OAuthApplicationComponent do
-  use Phoenix.Component
+  @moduledoc false
   alias TeiserverWeb.CoreComponents, as: CC
+  use Phoenix.Component
 
   attr :changeset, Ecto.Changeset, required: true
   attr :action, :string, required: true

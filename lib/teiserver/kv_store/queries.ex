@@ -1,7 +1,9 @@
 defmodule Teiserver.KvStore.Queries do
-  use TeiserverWeb, :queries
-
+  @moduledoc false
+  alias Ecto.Changeset
   alias Teiserver.KvStore.Blob
+
+  use TeiserverWeb, :queries
 
   @spec put(store :: String.t(), key :: String.t(), value :: binary()) ::
           :ok | {:error, Ecto.Changeset.t()}
@@ -15,7 +17,7 @@ defmodule Teiserver.KvStore.Queries do
       )
 
     case res do
-      {:ok, _} -> :ok
+      {:ok, _blob} -> :ok
       x -> x
     end
   end
@@ -36,7 +38,7 @@ defmodule Teiserver.KvStore.Queries do
       vals
       |> Enum.reduce({[], []}, fn attrs, {oks, errs} ->
         attrs = attrs |> Map.put(:inserted_at, now) |> Map.put(:updated_at, now)
-        cs = Blob.changeset(%Blob{}, attrs) |> Ecto.Changeset.apply_action(:insert)
+        cs = Blob.changeset(%Blob{}, attrs) |> Changeset.apply_action(:insert)
 
         case cs do
           {:ok, struct} -> {[Map.from_struct(struct) |> Map.delete(:__meta__) | oks], errs}
@@ -80,7 +82,7 @@ defmodule Teiserver.KvStore.Queries do
   @spec delete(store :: String.t(), key :: String.t()) :: :ok | {:error, Ecto.Changeset.t()}
   def delete(store, key) do
     case Repo.delete(%Blob{store: store, key: key}, allow_stale: true) do
-      {:ok, _} -> :ok
+      {:ok, _blob} -> :ok
       x -> x
     end
   end

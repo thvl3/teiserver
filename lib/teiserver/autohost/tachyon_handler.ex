@@ -6,10 +6,14 @@ defmodule Teiserver.Autohost.TachyonHandler do
   very different roles, have very different behaviour and states.
   """
   alias Teiserver.Autohost.Session
+  alias Teiserver.Autohost.SessionSupervisor
   alias Teiserver.Bot.Bot
   alias Teiserver.Data.Types, as: T
-  alias Teiserver.Helpers.{TachyonParser, Collections}
-  alias Teiserver.Tachyon.{Handler, Schema, Transport}
+  alias Teiserver.Helpers.Collections
+  alias Teiserver.Helpers.TachyonParser
+  alias Teiserver.Tachyon.Handler
+  alias Teiserver.Tachyon.Schema
+  alias Teiserver.Tachyon.Transport
   alias Teiserver.TachyonBattle
 
   require Logger
@@ -46,7 +50,7 @@ defmodule Teiserver.Autohost.TachyonHandler do
     end
   catch
     # in case the connection is terminating midway
-    :exit, {:normal, _} -> :ok
+    :exit, {:normal, _details} -> :ok
   end
 
   @doc """
@@ -63,6 +67,12 @@ defmodule Teiserver.Autohost.TachyonHandler do
     send(conn_pid, {:kill_battle, ref, battle_id})
   end
 
+  @spec add_player(pid(), reference(), TachyonBattle.Types.add_player_data()) ::
+          :ok | {:error, reason :: term()}
+  def add_player(conn_pid, ref, add_data) do
+    send(conn_pid, {:add_player, ref, add_data})
+  end
+
   @impl Handler
   def connect(conn) do
     autohost = conn.assigns[:token].bot
@@ -74,7 +84,7 @@ defmodule Teiserver.Autohost.TachyonHandler do
   def init(state) do
     Logger.metadata(actor_type: :autohost_conn, actor_id: state.autohost.id)
 
-    case Teiserver.Autohost.SessionSupervisor.start_session(state.autohost, self()) do
+    case SessionSupervisor.start_session(state.autohost, self()) do
       {:ok, session_pid} ->
         state = Map.put(state, :session_pid, session_pid)
         {:ok, state}
@@ -85,7 +95,7 @@ defmodule Teiserver.Autohost.TachyonHandler do
     end
   end
 
-  @impl true
+  @impl Handler
   def handle_info({:start_battle, battle_id, start_script}, state) do
     mappings = %{
       engine_version: :engineVersion,
@@ -95,8 +105,12 @@ defmodule Teiserver.Autohost.TachyonHandler do
       ally_teams:
         {:allyTeams,
          %{
-           teams: {:teams, %{players: {:players, &player_to_tachyon/1}}}
+           teams:
+             {:teams,
+              %{players: {:players, &player_to_tachyon/1}, bots: {:bots, &bot_to_tachyon/1}}},
+           start_box: {:startBox, %{top: :top, left: :left, bottom: :bottom, right: :right}}
          }},
+      game_options: :gameOptions,
       spectators: {:spectators, &player_to_tachyon/1}
     }
 
@@ -119,6 +133,19 @@ defmodule Teiserver.Autohost.TachyonHandler do
   def handle_info({:kill_battle, ref, battle_id}, state) do
     opts = [cb_state: ref]
     {:request, "autohost/kill", %{battleId: battle_id}, opts, state}
+  end
+
+  def handle_info({:add_player, ref, data}, state) do
+    mappings = %{
+      battle_id: "battleId",
+      user_id: {"userId", &to_string/1},
+      name: "name",
+      password: "password"
+    }
+
+    tachyon_data = Collections.transform_map(data, mappings)
+    opts = [cb_state: ref]
+    {:request, "autohost/addPlayer", tachyon_data, opts, state}
   end
 
   def handle_info(_msg, state) do
@@ -145,7 +172,7 @@ defmodule Teiserver.Autohost.TachyonHandler do
     {:ok, state}
   end
 
-  def handle_command("autohost/status", "event", _, msg, state) do
+  def handle_command("autohost/status", "event", _msg_id, msg, state) do
     %{"data" => %{"maxBattles" => max_battles, "currentBattles" => current}} = msg
     Session.update_capacity(state.session_pid, max_battles, current)
     state = %{state | state: :connected}
@@ -191,7 +218,7 @@ defmodule Teiserver.Autohost.TachyonHandler do
     {:error_response, :command_unimplemented, state}
   end
 
-  @impl true
+  @impl Handler
   def handle_response("autohost/start", _battle_id, _resp, state) when state.session_pid == nil,
     do: {:ok, state}
 
@@ -251,6 +278,25 @@ defmodule Teiserver.Autohost.TachyonHandler do
       end
 
     Session.reply_kill_battle(state.session_pid, ref, resp)
+    {:ok, state}
+  end
+
+  def handle_response("autohost/addPlayer", ref, response, state) do
+    resp =
+      case response["status"] do
+        "success" ->
+          :ok
+
+        "failed" ->
+          err = response["reason"]
+
+          case Map.get(response, "details") do
+            nil -> {:error, err}
+            details -> {:error, "#{err} - #{details}"}
+          end
+      end
+
+    Session.reply_add_player(state.session_pid, ref, resp)
     {:ok, state}
   end
 
@@ -405,6 +451,16 @@ defmodule Teiserver.Autohost.TachyonHandler do
       userId: to_string(p.user_id),
       name: p.name,
       password: p.password
+    }
+  end
+
+  def bot_to_tachyon(b) when is_list(b), do: Enum.map(b, &bot_to_tachyon/1)
+
+  def bot_to_tachyon(b) do
+    %{
+      hostUserId: to_string(b.host_user_id),
+      aiShortName: b.ai_short_name,
+      name: b.name
     }
   end
 end

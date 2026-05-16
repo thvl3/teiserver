@@ -1,17 +1,24 @@
 defmodule Teiserver.Moderation do
   @moduledoc false
-  import Ecto.Query, warn: false
+
   alias Teiserver.Repo
   # require Logger
-
   alias Phoenix.PubSub
+  alias Teiserver.Account
   alias Teiserver.Data.Types, as: T
   alias Teiserver.Helper.QueryHelpers
+  alias Teiserver.Moderation.Action
+  alias Teiserver.Moderation.ActionLib
+  alias Teiserver.Moderation.Ban
+  alias Teiserver.Moderation.BanLib
+  alias Teiserver.Moderation.RefreshUserRestrictionsTask
+  alias Teiserver.Moderation.Report
+  alias Teiserver.Moderation.ReportLib
+  alias Teiserver.Moderation.Response
+  alias Teiserver.Moderation.ResponseLib
 
-  alias Teiserver.{Account}
+  import Ecto.Query, warn: false
   import Teiserver.Logging.Helpers, only: [add_audit_log: 4]
-
-  alias Teiserver.Moderation.{Report, ReportLib}
 
   @spec icon :: String.t()
   defdelegate icon(), to: ReportLib
@@ -19,7 +26,7 @@ defmodule Teiserver.Moderation do
   @spec colour :: atom
   defdelegate colour(), to: ReportLib
 
-  def overwatch_icon(), do: "eye"
+  def overwatch_icon, do: "eye"
 
   @spec report_query(List.t()) :: Ecto.Query.t()
   def report_query(args) do
@@ -241,70 +248,6 @@ defmodule Teiserver.Moderation do
     Report.changeset(report, %{})
   end
 
-  def create_report_group_and_report(report_params) do
-    report_group = get_or_make_report_group(report_params.target_id, report_params.match_id)
-
-    report_params =
-      Map.merge(report_params, %{
-        report_group_id: report_group.id
-      })
-
-    case create_report(report_params) do
-      {:ok, report} ->
-        {:ok, report_group} =
-          Teiserver.Moderation.update_report_group(report_group, %{
-            report_count: report_group.report_count + 1
-          })
-
-        {:ok, report_group, report}
-
-      result ->
-        result
-    end
-  end
-
-  alias Teiserver.Moderation.ReportGroupLib
-
-  @spec list_report_groups() :: [ComplexServerEventType.t()]
-  defdelegate list_report_groups(), to: ReportGroupLib
-
-  @spec list_report_groups(list) :: [ComplexServerEventType.t()]
-  defdelegate list_report_groups(args), to: ReportGroupLib
-
-  @spec count_report_groups(list) :: integer()
-  defdelegate count_report_groups(args), to: ReportGroupLib
-
-  @spec get_report_group!(non_neg_integer) :: ComplexServerEventType.t()
-  defdelegate get_report_group!(id), to: ReportGroupLib
-
-  @spec get_report_group!(non_neg_integer, list) :: ComplexServerEventType.t()
-  defdelegate get_report_group!(id, args), to: ReportGroupLib
-
-  @spec create_report_group() :: {:ok, ComplexServerEventType.t()} | {:error, Ecto.Changeset}
-  defdelegate create_report_group(), to: ReportGroupLib
-
-  @spec create_report_group(map) :: {:ok, ComplexServerEventType.t()} | {:error, Ecto.Changeset}
-  defdelegate create_report_group(attrs), to: ReportGroupLib
-
-  @spec update_report_group(ComplexServerEventType.t(), map) ::
-          {:ok, ComplexServerEventType.t()} | {:error, Ecto.Changeset}
-  defdelegate update_report_group(report_group, attrs), to: ReportGroupLib
-
-  @spec delete_report_group(ComplexServerEventType) ::
-          {:ok, ComplexServerEventType} | {:error, Ecto.Changeset}
-  defdelegate delete_report_group(report_group), to: ReportGroupLib
-
-  @spec change_report_group(ComplexServerEventType) :: Ecto.Changeset
-  defdelegate change_report_group(report_group), to: ReportGroupLib
-
-  @spec change_report_group(ComplexServerEventType, map) :: Ecto.Changeset
-  defdelegate change_report_group(report_group, attrs), to: ReportGroupLib
-
-  @spec get_or_make_report_group(T.userid(), T.match_id() | nil) :: ReportGroup.t()
-  defdelegate get_or_make_report_group(target_id, match_id), to: ReportGroupLib
-
-  alias Teiserver.Moderation.{Response, ResponseLib}
-
   @spec response_query(List.t()) :: Ecto.Query.t()
   def response_query(args) do
     response_query(nil, args)
@@ -490,8 +433,6 @@ defmodule Teiserver.Moderation do
     Response.changeset(response, %{})
   end
 
-  alias Teiserver.Moderation.{Action, ActionLib}
-
   @spec action_query(List.t()) :: Ecto.Query.t()
   def action_query(args) do
     action_query(nil, args)
@@ -584,8 +525,8 @@ defmodule Teiserver.Moderation do
       nil
 
   """
-  @spec get_action(Integer.t() | List.t()) :: Action.t()
-  @spec get_action(Integer.t(), List.t()) :: Action.t()
+  @spec get_action(Integer.t() | List.t()) :: Action.t() | nil
+  @spec get_action(Integer.t(), List.t()) :: Action.t() | nil
   def get_action(id) when not is_list(id) do
     action_query(id, [])
     |> Repo.one()
@@ -703,272 +644,6 @@ defmodule Teiserver.Moderation do
   def change_action(%Action{} = action) do
     Action.changeset(action, %{})
   end
-
-  alias Teiserver.Moderation.{Proposal, ProposalLib}
-
-  @spec proposal_query(List.t()) :: Ecto.Query.t()
-  def proposal_query(args) do
-    proposal_query(nil, args)
-  end
-
-  @spec proposal_query(Integer.t(), List.t()) :: Ecto.Query.t()
-  def proposal_query(id, args) do
-    ProposalLib.query_proposals()
-    |> ProposalLib.search(%{id: id})
-    |> ProposalLib.search(args[:search])
-    |> ProposalLib.preload(args[:preload])
-    |> ProposalLib.order_by(args[:order_by])
-    |> QueryHelpers.query_select(args[:select])
-  end
-
-  @doc """
-  Returns the list of proposals.
-
-  ## Examples
-
-      iex> list_proposals()
-      [%Proposal{}, ...]
-
-  """
-  @spec list_proposals(List.t()) :: List.t()
-  def list_proposals(args \\ []) do
-    proposal_query(args)
-    |> QueryHelpers.limit_query(args[:limit] || 50)
-    |> Repo.all()
-  end
-
-  @doc """
-  Gets a single proposal.
-
-  Raises `Ecto.NoResultsError` if the Proposal does not exist.
-
-  ## Examples
-
-      iex> get_proposal!(123)
-      %Proposal{}
-
-      iex> get_proposal!(456)
-      ** (Ecto.NoResultsError)
-
-  """
-  @spec get_proposal!(Integer.t() | List.t()) :: Proposal.t()
-  @spec get_proposal!(Integer.t(), List.t()) :: Proposal.t()
-  def get_proposal!(id) when not is_list(id) do
-    proposal_query(id, [])
-    |> Repo.one!()
-  end
-
-  def get_proposal!(args) do
-    proposal_query(nil, args)
-    |> Repo.one!()
-  end
-
-  def get_proposal!(id, args) do
-    proposal_query(id, args)
-    |> Repo.one!()
-  end
-
-  # Uncomment this if needed, default files do not need this function
-  # @doc """
-  # Gets a single proposal.
-
-  # Returns `nil` if the Proposal does not exist.
-
-  # ## Examples
-
-  #     iex> get_proposal(123)
-  #     %Proposal{}
-
-  #     iex> get_proposal(456)
-  #     nil
-
-  # """
-  # def get_proposal(id, args \\ []) when not is_list(id) do
-  #   proposal_query(id, args)
-  #   |> Repo.one
-  # end
-
-  @doc """
-  Creates a proposal.
-
-  ## Examples
-
-      iex> create_proposal(%{field: value})
-      {:ok, %Proposal{}}
-
-      iex> create_proposal(%{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  @spec create_proposal(map()) :: {:ok, Proposal.t()} | {:error, Ecto.Changeset.t()}
-  def create_proposal(attrs \\ %{}) do
-    %Proposal{}
-    |> Proposal.changeset(attrs)
-    |> Repo.insert()
-    |> broadcast_create_proposal()
-  end
-
-  def broadcast_create_proposal({:ok, proposal}) do
-    PubSub.broadcast(
-      Teiserver.PubSub,
-      "global_moderation",
-      %{
-        channel: "global_moderation",
-        event: :new_proposal,
-        proposal: proposal
-      }
-    )
-
-    {:ok, proposal}
-  end
-
-  def broadcast_create_proposal(v), do: v
-
-  @doc """
-  Updates a proposal.
-
-  ## Examples
-
-      iex> update_proposal(proposal, %{field: new_value})
-      {:ok, %Proposal{}}
-
-      iex> update_proposal(proposal, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  @spec update_proposal(Proposal.t(), map()) ::
-          {:ok, Proposal.t()} | {:error, Ecto.Changeset.t()}
-  def update_proposal(%Proposal{} = proposal, attrs) do
-    proposal
-    |> Proposal.changeset(attrs)
-    |> Repo.update()
-    |> broadcast_update_proposal()
-  end
-
-  def broadcast_update_proposal({:ok, proposal}) do
-    PubSub.broadcast(
-      Teiserver.PubSub,
-      "global_moderation",
-      %{
-        channel: "global_moderation",
-        event: :updated_proposal,
-        proposal: proposal
-      }
-    )
-
-    {:ok, proposal}
-  end
-
-  def broadcast_update_proposal(v), do: v
-
-  @doc """
-  Deletes a Proposal.
-
-  ## Examples
-
-      iex> delete_proposal(proposal)
-      {:ok, %Proposal{}}
-
-      iex> delete_proposal(proposal)
-      {:error, %Ecto.Changeset{}}
-
-  """
-  @spec delete_proposal(Proposal.t()) :: {:ok, Proposal.t()} | {:error, Ecto.Changeset.t()}
-  def delete_proposal(%Proposal{} = proposal) do
-    Repo.delete(proposal)
-  end
-
-  @doc """
-  Returns an `%Ecto.Changeset{}` for tracking proposal changes.
-
-  ## Examples
-
-      iex> change_proposal(proposal)
-      %Ecto.Changeset{source: %Proposal{}}
-
-  """
-  @spec change_proposal(Proposal.t()) :: Ecto.Changeset.t()
-  def change_proposal(%Proposal{} = proposal) do
-    Proposal.changeset(proposal, %{})
-  end
-
-  alias Teiserver.Moderation.{ProposalVote, ProposalVoteLib}
-
-  @doc """
-  Gets a single proposal_vote.
-
-  Raises `Ecto.NoResultsError` if the ProposalVote does not exist.
-
-  ## Examples
-
-      iex> get_proposal_vote(123)
-      %ProposalVote{}
-
-      iex> get_proposal_vote(456)
-      nil
-
-  """
-  @spec get_proposal_vote(T.userid(), integer()) :: ProposalVote.t() | nil
-  def get_proposal_vote(user_id, proposal_id) do
-    ProposalVoteLib.query_proposal_votes()
-    |> ProposalVoteLib.search(user_id: user_id, proposal_id: proposal_id)
-    |> Repo.one()
-  end
-
-  def create_proposal_vote(attrs \\ %{}) do
-    %ProposalVote{}
-    |> ProposalVote.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  @doc """
-  Updates a proposal_vote.
-
-  ## Examples
-
-      iex> update_proposal_vote(proposal_vote, %{field: new_value})
-      {:ok, %ProposalVote{}}
-
-      iex> update_proposal_vote(proposal_vote, %{field: bad_value})
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def update_proposal_vote(%ProposalVote{} = proposal_vote, attrs) do
-    proposal_vote
-    |> ProposalVote.changeset(attrs)
-    |> Repo.update()
-  end
-
-  @doc """
-  Deletes a ProposalVote.
-
-  ## Examples
-
-      iex> delete_proposal_vote(proposal_vote)
-      {:ok, %ProposalVote{}}
-
-      iex> delete_proposal_vote(proposal_vote)
-      {:error, %Ecto.Changeset{}}
-
-  """
-  def delete_proposal_vote(%ProposalVote{} = proposal_vote) do
-    Repo.delete(proposal_vote)
-  end
-
-  @doc """
-  Returns an `%Ecto.Changeset{}` for tracking proposal_vote changes.
-
-  ## Examples
-
-      iex> change_proposal_vote(proposal_vote)
-      %Ecto.Changeset{source: %ProposalVote{}}
-
-  """
-  def change_proposal_vote(%ProposalVote{} = proposal_vote) do
-    ProposalVote.changeset(proposal_vote, %{})
-  end
-
-  alias Teiserver.Moderation.{Ban, BanLib}
 
   @spec ban_query(List.t()) :: Ecto.Query.t()
   def ban_query(args) do
@@ -1157,13 +832,13 @@ defmodule Teiserver.Moderation do
   @spec unbridge_user(nil | T.user() | T.userid(), String.t(), non_neg_integer(), String.t()) ::
           any
   def unbridge_user(userid, message, flagged_word_count, location) when is_integer(userid) do
-    unbridge_user(Account.get_user_by_id(userid), message, flagged_word_count, location)
+    unbridge_user(Account.get_user(userid), message, flagged_word_count, location)
   end
 
-  def unbridge_user(nil, _, _, _), do: :no_user
+  def unbridge_user(nil, _message, _flagged_word_count, _location), do: :no_user
 
   def unbridge_user(user, message, flagged_word_count, location) do
-    if not Teiserver.CacheUser.is_restricted?(user, ["Bridging"]) do
+    if not Account.restricted?(user, ["Bridging"]) do
       {:ok, _action} =
         create_action(%{
           target_id: user.id,
@@ -1174,7 +849,7 @@ defmodule Teiserver.Moderation do
           expires: Timex.now() |> Timex.shift(years: 1200)
         })
 
-      Teiserver.Moderation.RefreshUserRestrictionsTask.refresh_user(user.id)
+      RefreshUserRestrictionsTask.refresh_user(user.id)
 
       client = Account.get_client_by_id(user.id) || %{ip: "no client"}
 

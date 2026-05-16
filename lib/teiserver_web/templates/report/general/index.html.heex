@@ -4,7 +4,7 @@
       <h4>Metrics</h4>
     </div>
 
-    <%= if allow?(@current_user, "Admin") do %>
+    <%= if allow?(@current_user, "Moderator") do %>
       {central_component("menu_card",
         size: :small,
         icon: Teiserver.Account.RatingLib.icon(),
@@ -196,16 +196,6 @@
       name: "accolades",
       text: "Accolades",
       link: Routes.ts_reports_report_path(@conn, :show, "accolades")
-    )}
-  <% end %>
-
-  <%= if allow?(@current_user, Teiserver.Account.TournamentReport.permissions()) do %>
-    {central_component("menu_card",
-      size: :small,
-      icon: "fa-solid fa-ranking-star",
-      name: "tournament",
-      text: "Tournament",
-      link: Routes.ts_reports_report_path(@conn, :show, "tournament")
     )}
   <% end %>
 

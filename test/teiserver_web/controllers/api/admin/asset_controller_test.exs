@@ -1,9 +1,10 @@
 defmodule TeiserverWeb.API.Admin.AssetControllerTest do
-  use TeiserverWeb.ConnCase, async: false
+  alias Teiserver.Helpers.GeneralTestLib
   alias Teiserver.OAuthFixtures
+  use TeiserverWeb.ConnCase, async: false
 
   defp setup_user(_context) do
-    user = Central.Helpers.GeneralTestLib.make_user()
+    user = GeneralTestLib.make_user()
     {:ok, user: user}
   end
 
@@ -16,7 +17,7 @@ defmodule TeiserverWeb.API.Admin.AssetControllerTest do
     {:ok, authed_conn: auth_conn(conn, token), token: token}
   end
 
-  defp update_map_path(), do: ~p"/teiserver/api/admin/assets/update_maps"
+  defp update_map_path, do: ~p"/teiserver/api/admin/assets/update_maps"
 
   describe "auth" do
     setup [:setup_user, :setup_token]

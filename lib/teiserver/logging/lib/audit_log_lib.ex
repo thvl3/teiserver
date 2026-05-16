@@ -1,14 +1,15 @@
 defmodule Teiserver.Logging.AuditLogLib do
   @moduledoc false
-  use TeiserverWeb, :library
 
   alias Teiserver.Logging.AuditLog
 
+  use TeiserverWeb, :library
+
   @spec colours() :: atom
-  def colours(), do: :danger2
+  def colours, do: :danger2
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-archive"
+  def icon, do: "fa-solid fa-archive"
 
   @spec add_audit_types([String.t()]) :: :ok
   def add_audit_types(types) do
@@ -17,13 +18,13 @@ defmodule Teiserver.Logging.AuditLogLib do
   end
 
   @spec list_audit_types :: [String.t()]
-  def list_audit_types() do
+  def list_audit_types do
     Teiserver.cache_get(:application_metadata_cache, "audit_types") || []
   end
 
   # Queries
   @spec query_audit_logs() :: Ecto.Query.t()
-  def query_audit_logs() do
+  def query_audit_logs do
     from(logs in AuditLog)
   end
 
@@ -38,8 +39,8 @@ defmodule Teiserver.Logging.AuditLogLib do
   end
 
   @spec _search(Ecto.Query.t(), any, any) :: Ecto.Query.t()
-  def _search(query, _, ""), do: query
-  def _search(query, _, nil), do: query
+  def _search(query, _key, ""), do: query
+  def _search(query, _key, nil), do: query
 
   def _search(query, :id, id) do
     from logs in query,

@@ -1,14 +1,16 @@
 defmodule Teiserver.Account.RelationshipReport do
   @moduledoc false
+
+  alias Ecto.Adapters.SQL
+  alias Teiserver.Account.RelationshipLib
   alias Teiserver.Repo
   import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
-  alias Teiserver.Account.RelationshipLib
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-arrow-down-up-across-line"
+  def icon, do: "fa-solid fa-arrow-down-up-across-line"
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Reviewer"
+  def permissions, do: "Reviewer"
 
   @spec run(Plug.Conn.t(), map()) :: map()
   def run(_conn, params) do
@@ -41,7 +43,7 @@ defmodule Teiserver.Account.RelationshipReport do
         "follow" -> "AND rels.state = 'follow'"
         "avoid" -> "AND rels.state IN ('block', 'avoid')"
         "block" -> "AND rels.state = 'avoid'"
-        _ -> raise "No handler for state_type of `#{state_type}`"
+        _other -> raise "No handler for state_type of `#{state_type}`"
       end
 
     query = """
@@ -67,7 +69,7 @@ defmodule Teiserver.Account.RelationshipReport do
     """
 
     results =
-      case Ecto.Adapters.SQL.query(Repo, query, [start_date, limit]) do
+      case SQL.query(Repo, query, [start_date, limit]) do
         {:ok, results} ->
           results.rows
 

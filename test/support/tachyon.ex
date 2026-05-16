@@ -1,45 +1,56 @@
 defmodule Teiserver.Support.Tachyon do
-  alias WebsocketSyncClient, as: WSC
+  @moduledoc false
+  alias ExUnit.Callbacks
+  alias Teiserver.Account
+  alias Teiserver.Autohost
+  alias Teiserver.BotFixtures
+  alias Teiserver.Game
+  alias Teiserver.Game.MatchRatingLib
+  alias Teiserver.Helpers.Collections
+  alias Teiserver.Helpers.GeneralTestLib
   alias Teiserver.OAuthFixtures
   alias Teiserver.Support.Polling
+  alias Teiserver.Tachyon
+  alias Teiserver.Tachyon.Schema
+  alias WebsocketSyncClient, as: WSC
 
   def tachyon_case_setup(tags) do
-    if String.contains?(to_string(tags[:module]), "Tachyon") || tags[:tachyon] do
-      Teiserver.Tachyon.disable_state_restoration()
-      Teiserver.Tachyon.restart_system()
+    if tags[:module] |> to_string() |> String.contains?("Tachyon") || tags[:tachyon] do
+      Tachyon.disable_state_restoration()
+      Tachyon.restart_system()
 
       # this reduces the noise when processes attempt to do sql when the test
       # and the sandbox with it are already wound down
-      ExUnit.Callbacks.on_exit(fn ->
-        Supervisor.terminate_child(Teiserver.Supervisor, Teiserver.Tachyon.System)
+      Callbacks.on_exit(fn ->
+        Supervisor.terminate_child(Teiserver.Supervisor, Tachyon.System)
       end)
     end
   end
 
-  def create_user() do
-    user = Central.Helpers.GeneralTestLib.make_user(%{"data" => %{"roles" => ["Verified"]}})
+  def create_user do
+    user = GeneralTestLib.make_user(%{"roles" => ["Verified"]})
     set_ratings(user, 17)
     user
   end
 
-  @spec set_rating(Teiserver.Account.User.t(), rating_type :: String.t(), number() | map()) ::
-          Teiserver.Account.Rating.t()
+  @spec set_rating(Account.User.t(), rating_type :: String.t(), number() | map()) ::
+          Account.Rating.t()
   def set_rating(user, rating_type, r) do
-    rating = Teiserver.Game.get_rating_type_by_name!(rating_type)
+    rating = Game.get_rating_type_by_name!(rating_type)
     [r] = set_ratings(user, [{rating, r}])
     r
   end
 
   @spec set_ratings(
-          Teiserver.Account.User.t(),
-          rating :: number() | [{Teiserver.Game.RatingType.t(), number() | map()}]
-        ) :: [Teiserver.Account.Rating.t()]
+          Account.User.t(),
+          rating :: number() | [{Game.RatingType.t(), number() | map()}]
+        ) :: [Account.Rating.t()]
   @doc """
   Set rating for all game type for this user
   """
   def set_ratings(user, r) when is_number(r) do
     ratings =
-      Teiserver.Game.list_rating_types()
+      Game.list_rating_types()
       |> Enum.map(fn rating -> {rating, r} end)
 
     set_ratings(user, ratings)
@@ -61,19 +72,19 @@ defmodule Teiserver.Support.Tachyon do
             uncertainty: 1.0,
             leaderboard_rating: 10,
             last_updated: DateTime.utc_now(),
-            season: Teiserver.Game.MatchRatingLib.active_season()
+            season: MatchRatingLib.active_season()
           },
           attrs
         )
 
-      {:ok, r} = Teiserver.Account.create_or_update_rating(attrs)
+      {:ok, r} = Account.create_or_update_rating(attrs)
       r
     end
   end
 
   def setup_client(_context), do: setup_client()
 
-  def setup_client() do
+  def setup_client do
     user = create_user()
     %{client: client, token: token} = connect(user)
     {:ok, user: user, client: client, token: token}
@@ -81,7 +92,7 @@ defmodule Teiserver.Support.Tachyon do
 
   # for when you only need an oauth app
   def setup_app(_context) do
-    owner = Central.Helpers.GeneralTestLib.make_user(%{"data" => %{"roles" => ["Verified"]}})
+    owner = GeneralTestLib.make_user(%{"roles" => ["Verified"]})
 
     app =
       OAuthFixtures.app_attrs(owner.id)
@@ -92,7 +103,7 @@ defmodule Teiserver.Support.Tachyon do
   end
 
   def setup_autohost(context) do
-    autohost = Teiserver.BotFixtures.create_bot()
+    autohost = BotFixtures.create_bot()
 
     token =
       OAuthFixtures.token_attrs(nil, context.app)
@@ -101,7 +112,7 @@ defmodule Teiserver.Support.Tachyon do
       |> OAuthFixtures.create_token()
 
     client = connect_autohost!(token, 10, 0)
-    ExUnit.Callbacks.on_exit(fn -> cleanup_connection(client, token) end)
+    Callbacks.on_exit(fn -> cleanup_connection(client, token) end)
     {:ok, autohost: autohost, autohost_client: client}
   end
 
@@ -124,7 +135,7 @@ defmodule Teiserver.Support.Tachyon do
       {:ok, _user_updated} = recv_message(client)
     end
 
-    ExUnit.Callbacks.on_exit(fn -> cleanup_connection(client, token) end)
+    Callbacks.on_exit(fn -> cleanup_connection(client, token) end)
     client
   end
 
@@ -158,9 +169,9 @@ defmodule Teiserver.Support.Tachyon do
     :ok = send_response(client, request, data: %{})
 
     Polling.poll_until_true(fn ->
-      case Teiserver.Autohost.lookup_autohost(token.bot_id) do
+      case Autohost.lookup_autohost(token.bot_id) do
         nil -> false
-        {_, val} -> val.max_battles == max_battles && val.current_battles == current
+        {_pid, val} -> val.max_battles == max_battles && val.current_battles == current
       end
     end)
 
@@ -178,12 +189,11 @@ defmodule Teiserver.Support.Tachyon do
     ]
   end
 
-  def tachyon_url() do
+  def tachyon_url do
     conf = Application.get_env(:teiserver, TeiserverWeb.Endpoint)
     "ws://#{conf[:url][:host]}:#{conf[:http][:port]}/tachyon"
   end
 
-  # credo:disable-for-next-line Credo.Check.Design.TagTODO
   # TODO tachyon_mvp: add a json validation here to make sure the request
   # sent there is conforming
   def request(command_id, data \\ nil) do
@@ -248,7 +258,6 @@ defmodule Teiserver.Support.Tachyon do
     WSC.send_message(client, {:text, event(command_id, data) |> Jason.encode!()})
   end
 
-  # credo:disable-for-next-line Credo.Check.Design.TagTODO
   # TODO tachyon_mvp: create a version of this function that also check the
   # the response against the expected json schema
   def recv_message(client, opts \\ []) do
@@ -258,19 +267,17 @@ defmodule Teiserver.Support.Tachyon do
       {:ok, {:text, resp}} ->
         with decoded <- Jason.decode!(resp),
              {:ok, cmd_id, message_type, _msg_id} <-
-               Teiserver.Tachyon.Schema.parse_envelope(decoded),
-             :ok <- Teiserver.Tachyon.Schema.parse_message(cmd_id, message_type, decoded) do
+               Schema.parse_envelope(decoded),
+             :ok <- Schema.parse_message(cmd_id, message_type, decoded) do
           {:ok, decoded}
         else
           {:error, %JsonXema.ValidationError{} = err} ->
-            # credo:disable-for-next-line Credo.Check.Warning.IoInspect
-            IO.inspect(Jason.decode!(resp), label: "schema validation failed on")
+            resp |> Jason.decode!() |> IO.inspect(label: "schema validation failed on")
             {:error, err}
 
           err ->
-            # credo:disable-for-next-line Credo.Check.Warning.IoInspect
-            IO.inspect(Jason.decode!(resp), label: "schema validation failed on")
-            # credo:disable-for-next-line Credo.Check.Warning.IoInspect
+            resp |> Jason.decode!() |> IO.inspect(label: "schema validation failed on")
+
             IO.inspect(err, label: "unknown error")
             err
         end
@@ -387,6 +394,10 @@ defmodule Teiserver.Support.Tachyon do
 
   def send_party_message(client, message) do
     send_message!(client, message, %{type: :party})
+  end
+
+  def send_lobby_message(client, message) do
+    send_message!(client, message, %{type: :lobby})
   end
 
   def subscribe_messaging!(client, opts \\ []) do
@@ -506,12 +517,16 @@ defmodule Teiserver.Support.Tachyon do
     }
 
   def create_lobby!(client, lobby_data) do
-    data = %{
-      name: lobby_data.name,
-      mapName: lobby_data.map_name,
-      allyTeamConfig: lobby_data.ally_team_config
+    mapping = %{
+      name: :name,
+      map_name: :mapName,
+      ally_team_config: :allyTeamConfig,
+      boss_enabled?: :areBossesEnabled,
+      game_options:
+        {:gameOptions, &(Enum.map(&1, fn {k, v} -> {k, %{value: v}} end) |> Enum.into(%{}))}
     }
 
+    data = Collections.transform_map(lobby_data, mapping)
     :ok = send_request(client, "lobby/create", data)
     {:ok, resp} = recv_message(client)
     resp
@@ -522,8 +537,8 @@ defmodule Teiserver.Support.Tachyon do
   For example: mk_ally_team_config(2, 1) for a duel setting
   """
   def mk_ally_team_config(n_ally_team, n_team) do
-    for _ <- 1..n_ally_team do
-      teams = for _ <- 1..n_team, do: %{maxPlayers: 1}
+    for _i <- 1..n_ally_team do
+      teams = for _j <- 1..n_team, do: %{maxPlayers: 1}
 
       %{
         maxTeams: n_team,
@@ -614,6 +629,32 @@ defmodule Teiserver.Support.Tachyon do
 
   def lobby_update!(client, update_data) do
     :ok = send_request(client, "lobby/update", update_data)
+    {:ok, resp} = recv_message(client)
+    resp
+  end
+
+  def lobby_appoint_boss(client, user_id) do
+    :ok = send_request(client, "lobby/appointBoss", %{userId: to_string(user_id)})
+    {:ok, resp} = recv_message(client)
+    resp
+  end
+
+  def lobby_unboss(client, user_id \\ nil) do
+    uid = if user_id, do: to_string(user_id), else: nil
+    :ok = send_request(client, "lobby/unboss", %{userId: uid})
+    {:ok, resp} = recv_message(client)
+    resp
+  end
+
+  def lobby_update_client_status(client, update_data) do
+    :ok = send_request(client, "lobby/updateClientStatus", update_data)
+    {:ok, resp} = recv_message(client)
+    resp
+  end
+
+  def lobby_vote_submit(client, vote_id, ballot) do
+    data = %{"id" => vote_id, "vote" => ballot}
+    :ok = send_request(client, "lobby/voteSubmit", data)
     {:ok, resp} = recv_message(client)
     resp
   end

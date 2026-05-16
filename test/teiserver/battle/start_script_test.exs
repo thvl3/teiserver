@@ -1,11 +1,12 @@
 defmodule Teiserver.Battle.StartScriptTest do
+  alias Teiserver.Battle
+  alias Teiserver.Helpers.GeneralTestLib
+
   use Teiserver.DataCase, async: false
 
-  alias Teiserver.Battle
-
   test "test start script duel" do
-    user1 = Central.Helpers.GeneralTestLib.make_user(%{"data" => %{"roles" => ["Verified"]}})
-    user2 = Central.Helpers.GeneralTestLib.make_user(%{"data" => %{"roles" => ["Verified"]}})
+    user1 = GeneralTestLib.make_user(%{"roles" => ["Verified"]})
+    user2 = GeneralTestLib.make_user(%{"roles" => ["Verified"]})
 
     start_script = %{
       game_name: "Beyond All Reason test-28379-33ba377",
@@ -51,7 +52,7 @@ defmodule Teiserver.Battle.StartScriptTest do
   end
 
   test "test start script 1 vs bot" do
-    user1 = Central.Helpers.GeneralTestLib.make_user(%{"data" => %{"roles" => ["Verified"]}})
+    user1 = GeneralTestLib.make_user(%{"roles" => ["Verified"]})
 
     start_script = %{
       game_name: "Beyond All Reason test-28379-33ba377",

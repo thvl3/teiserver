@@ -3,14 +3,41 @@ defmodule Teiserver.Logging do
   The Logging context.
   """
 
-  @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-bars"
-
-  import Ecto.Query, warn: false
   alias Teiserver.Helper.QueryHelpers
+  alias Teiserver.Logging.AggregateViewLogLib
+  alias Teiserver.Logging.AuditLog
+  alias Teiserver.Logging.AuditLogLib
+  alias Teiserver.Logging.MatchDayLog
+  alias Teiserver.Logging.MatchDayLogLib
+  alias Teiserver.Logging.MatchMonthLog
+  alias Teiserver.Logging.MatchMonthLogLib
+  alias Teiserver.Logging.PageViewLog
+  alias Teiserver.Logging.PageViewLogLib
+  alias Teiserver.Logging.ServerDayLog
+  alias Teiserver.Logging.ServerDayLogLib
+  alias Teiserver.Logging.ServerMinuteLog
+  alias Teiserver.Logging.ServerMinuteLogLib
+  alias Teiserver.Logging.ServerMonthLog
+  alias Teiserver.Logging.ServerMonthLogLib
+  alias Teiserver.Logging.ServerQuarterLog
+  alias Teiserver.Logging.ServerQuarterLogLib
+  alias Teiserver.Logging.ServerWeekLog
+  alias Teiserver.Logging.ServerWeekLogLib
+  alias Teiserver.Logging.ServerYearLog
+  alias Teiserver.Logging.ServerYearLogLib
+  alias Teiserver.Logging.Tasks.PersistMatchMonthTask
+  alias Teiserver.Logging.Tasks.PersistServerDayTask
+  alias Teiserver.Logging.Tasks.PersistServerMonthTask
+  alias Teiserver.Logging.Tasks.PersistServerQuarterTask
+  alias Teiserver.Logging.Tasks.PersistServerWeekTask
+  alias Teiserver.Logging.Tasks.PersistServerYearTask
+  alias Teiserver.Logging.UserActivityDayLog
+  alias Teiserver.Logging.UserActivityDayLogLib
   alias Teiserver.Repo
+  import Ecto.Query, warn: false
 
-  alias Teiserver.Logging.{ServerMinuteLog, ServerMinuteLogLib}
+  @spec icon() :: String.t()
+  def icon, do: "fa-solid fa-bars"
 
   defp server_minute_log_query(args) do
     server_minute_log_query(nil, args)
@@ -135,8 +162,6 @@ defmodule Teiserver.Logging do
   end
 
   # Day logs
-  alias Teiserver.Logging.{ServerDayLog, ServerDayLogLib}
-
   defp server_day_log_query(args) do
     server_day_log_query(nil, args)
   end
@@ -260,7 +285,7 @@ defmodule Teiserver.Logging do
   end
 
   @spec get_first_telemetry_minute_datetime() :: DateTime.t() | nil
-  def get_first_telemetry_minute_datetime() do
+  def get_first_telemetry_minute_datetime do
     query =
       from telemetry_logs in ServerMinuteLog,
         order_by: [asc: telemetry_logs.timestamp],
@@ -271,7 +296,7 @@ defmodule Teiserver.Logging do
   end
 
   @spec get_last_server_day_log() :: Date.t() | nil
-  def get_last_server_day_log() do
+  def get_last_server_day_log do
     query =
       from telemetry_logs in ServerDayLog,
         order_by: [desc: telemetry_logs.date],
@@ -292,12 +317,12 @@ defmodule Teiserver.Logging do
       cond do
         recache == true -> true
         last_time == nil -> true
-        Timex.compare(Timex.now() |> Timex.shift(minutes: -15), last_time) == 1 -> true
+        Timex.now() |> Timex.shift(minutes: -15) |> Timex.compare(last_time) == 1 -> true
         true -> false
       end
 
     if recache do
-      data = Teiserver.Logging.Tasks.PersistServerDayTask.today_so_far()
+      data = PersistServerDayTask.today_so_far()
 
       Teiserver.cache_put(
         :application_metadata_cache,
@@ -318,8 +343,6 @@ defmodule Teiserver.Logging do
   end
 
   # Month logs
-  alias Teiserver.Logging.{ServerMonthLog, ServerMonthLogLib}
-
   defp server_month_log_query(args) do
     server_month_log_query(nil, args)
   end
@@ -443,7 +466,7 @@ defmodule Teiserver.Logging do
   end
 
   @spec get_last_server_month_log() :: {integer(), integer()} | nil
-  def get_last_server_month_log() do
+  def get_last_server_month_log do
     query =
       from telemetry_logs in ServerMonthLog,
         order_by: [desc: telemetry_logs.year, desc: telemetry_logs.month],
@@ -468,12 +491,12 @@ defmodule Teiserver.Logging do
       cond do
         force_recache == true -> force_recache
         last_time == nil -> true
-        Timex.compare(Timex.now() |> Timex.shift(days: -1), last_time) == 1 -> true
+        Timex.now() |> Timex.shift(days: -1) |> Timex.compare(last_time) == 1 -> true
         true -> false
       end
 
     if recache do
-      data = Teiserver.Logging.Tasks.PersistServerMonthTask.month_so_far()
+      data = PersistServerMonthTask.month_so_far()
 
       Teiserver.cache_put(
         :application_metadata_cache,
@@ -494,8 +517,6 @@ defmodule Teiserver.Logging do
   end
 
   # Quarter logs
-  alias Teiserver.Logging.{ServerQuarterLog, ServerQuarterLogLib}
-
   defp server_quarter_log_query(args) do
     server_quarter_log_query(nil, args)
   end
@@ -619,7 +640,7 @@ defmodule Teiserver.Logging do
   end
 
   @spec get_last_server_quarter_log() :: Date.t() | nil
-  def get_last_server_quarter_log() do
+  def get_last_server_quarter_log do
     query =
       from telemetry_logs in ServerQuarterLog,
         order_by: [desc: telemetry_logs.year, desc: telemetry_logs.quarter],
@@ -647,12 +668,12 @@ defmodule Teiserver.Logging do
       cond do
         force_recache == true -> force_recache
         last_time == nil -> true
-        Timex.compare(Timex.now() |> Timex.shift(days: -1), last_time) == 1 -> true
+        Timex.now() |> Timex.shift(days: -1) |> Timex.compare(last_time) == 1 -> true
         true -> false
       end
 
     if recache do
-      data = Teiserver.Logging.Tasks.PersistServerQuarterTask.quarter_so_far()
+      data = PersistServerQuarterTask.quarter_so_far()
 
       Teiserver.cache_put(
         :application_metadata_cache,
@@ -673,8 +694,6 @@ defmodule Teiserver.Logging do
   end
 
   # Year logs
-  alias Teiserver.Logging.{ServerYearLog, ServerYearLogLib}
-
   defp server_year_log_query(args) do
     server_year_log_query(nil, args)
   end
@@ -798,7 +817,7 @@ defmodule Teiserver.Logging do
   end
 
   @spec get_last_server_year_log() :: Date.t() | nil
-  def get_last_server_year_log() do
+  def get_last_server_year_log do
     query =
       from telemetry_logs in ServerYearLog,
         order_by: [desc: telemetry_logs.year, desc: telemetry_logs.year],
@@ -823,12 +842,12 @@ defmodule Teiserver.Logging do
       cond do
         force_recache == true -> force_recache
         last_time == nil -> true
-        Timex.compare(Timex.now() |> Timex.shift(days: -1), last_time) == 1 -> true
+        Timex.now() |> Timex.shift(days: -1) |> Timex.compare(last_time) == 1 -> true
         true -> false
       end
 
     if recache do
-      data = Teiserver.Logging.Tasks.PersistServerYearTask.year_so_far()
+      data = PersistServerYearTask.year_so_far()
       Teiserver.cache_put(:application_metadata_cache, "teiserver_year_year_metrics_cache", data)
 
       Teiserver.cache_put(
@@ -844,8 +863,6 @@ defmodule Teiserver.Logging do
   end
 
   # Week logs
-  alias Teiserver.Logging.{ServerWeekLog, ServerWeekLogLib}
-
   defp server_week_log_query(args) do
     server_week_log_query(nil, args)
   end
@@ -969,7 +986,7 @@ defmodule Teiserver.Logging do
   end
 
   @spec get_last_server_week_log() :: Date.t() | nil
-  def get_last_server_week_log() do
+  def get_last_server_week_log do
     query =
       from telemetry_logs in ServerWeekLog,
         order_by: [desc: telemetry_logs.year, desc: telemetry_logs.week],
@@ -994,12 +1011,12 @@ defmodule Teiserver.Logging do
       cond do
         force_recache == true -> force_recache
         last_time == nil -> true
-        Timex.compare(Timex.now() |> Timex.shift(days: -1), last_time) == 1 -> true
+        Timex.now() |> Timex.shift(days: -1) |> Timex.compare(last_time) == 1 -> true
         true -> false
       end
 
     if recache do
-      data = Teiserver.Logging.Tasks.PersistServerWeekTask.week_so_far()
+      data = PersistServerWeekTask.week_so_far()
       Teiserver.cache_put(:application_metadata_cache, "teiserver_week_week_metrics_cache", data)
 
       Teiserver.cache_put(
@@ -1016,8 +1033,6 @@ defmodule Teiserver.Logging do
 
   # Match logs
   # Day logs
-  alias Teiserver.Logging.{MatchDayLog, MatchDayLogLib}
-
   defp match_day_log_query(args) do
     match_day_log_query(nil, args)
   end
@@ -1140,7 +1155,7 @@ defmodule Teiserver.Logging do
   end
 
   @spec get_last_match_day_log() :: Date.t() | nil
-  def get_last_match_day_log() do
+  def get_last_match_day_log do
     query =
       from telemetry_logs in MatchDayLog,
         order_by: [desc: telemetry_logs.date],
@@ -1151,7 +1166,7 @@ defmodule Teiserver.Logging do
   end
 
   @spec get_todays_match_log :: map()
-  def get_todays_match_log() do
+  def get_todays_match_log do
     last_time =
       Teiserver.cache_get(
         :application_metadata_cache,
@@ -1161,12 +1176,12 @@ defmodule Teiserver.Logging do
     recache =
       cond do
         last_time == nil -> true
-        Timex.compare(Timex.now() |> Timex.shift(minutes: -15), last_time) == 1 -> true
+        Timex.now() |> Timex.shift(minutes: -15) |> Timex.compare(last_time) == 1 -> true
         true -> false
       end
 
     if recache do
-      data = Teiserver.Logging.Tasks.PersistMatchMonthTask.month_so_far()
+      data = PersistMatchMonthTask.month_so_far()
 
       Teiserver.cache_put(
         :application_metadata_cache,
@@ -1195,12 +1210,12 @@ defmodule Teiserver.Logging do
       cond do
         force_recache == true -> true
         last_time == nil -> true
-        Timex.compare(Timex.now() |> Timex.shift(days: -1), last_time) == 1 -> true
+        Timex.now() |> Timex.shift(days: -1) |> Timex.compare(last_time) == 1 -> true
         true -> false
       end
 
     if recache do
-      data = Teiserver.Logging.Tasks.PersistMatchMonthTask.month_so_far()
+      data = PersistMatchMonthTask.month_so_far()
 
       Teiserver.cache_put(
         :application_metadata_cache,
@@ -1221,8 +1236,6 @@ defmodule Teiserver.Logging do
   end
 
   # Month logs
-  alias Teiserver.Logging.{MatchMonthLog, MatchMonthLogLib}
-
   defp match_month_log_query(args) do
     match_month_log_query(nil, args)
   end
@@ -1345,7 +1358,7 @@ defmodule Teiserver.Logging do
   end
 
   @spec get_last_match_month_log() :: {integer(), integer()} | nil
-  def get_last_match_month_log() do
+  def get_last_match_month_log do
     query =
       from telemetry_logs in MatchMonthLog,
         order_by: [desc: telemetry_logs.year, desc: telemetry_logs.month],
@@ -1360,8 +1373,6 @@ defmodule Teiserver.Logging do
         nil
     end
   end
-
-  alias Teiserver.Logging.{AuditLog, AuditLogLib}
 
   defp audit_log_query(args) do
     audit_log_query(nil, args)
@@ -1500,8 +1511,6 @@ defmodule Teiserver.Logging do
     AuditLog.changeset(log, %{})
   end
 
-  alias Teiserver.Logging.{PageViewLog, PageViewLogLib}
-
   @doc """
   Returns the list of page_view_logs.
 
@@ -1609,9 +1618,6 @@ defmodule Teiserver.Logging do
     PageViewLog.changeset(page_view_log, %{})
   end
 
-  # alias Teiserver.Logging.AggregateViewLog
-  alias Teiserver.Logging.AggregateViewLogLib
-
   @doc """
   Returns the list of logging_logs.
 
@@ -1630,11 +1636,11 @@ defmodule Teiserver.Logging do
     |> Repo.all()
   end
 
-  def get_last_aggregate_date() do
+  def get_last_aggregate_date do
     AggregateViewLogLib.get_last_aggregate_date()
   end
 
-  def get_first_page_view_log_date() do
+  def get_first_page_view_log_date do
     AggregateViewLogLib.get_first_page_view_log_date()
   end
 
@@ -1649,8 +1655,6 @@ defmodule Teiserver.Logging do
   end
 
   # User activity
-  alias Teiserver.Logging.{UserActivityDayLog, UserActivityDayLogLib}
-
   defp user_activity_day_log_query(args) do
     user_activity_day_log_query(nil, args)
   end
@@ -1774,7 +1778,7 @@ defmodule Teiserver.Logging do
   end
 
   @spec get_last_user_activity_day_log() :: Date.t() | nil
-  def get_last_user_activity_day_log() do
+  def get_last_user_activity_day_log do
     query =
       from user_activity_logs in UserActivityDayLog,
         order_by: [desc: user_activity_logs.date],

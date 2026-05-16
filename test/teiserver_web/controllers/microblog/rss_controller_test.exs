@@ -1,14 +1,19 @@
 defmodule TeiserverWeb.Microblog.RssControllerTest do
   @moduledoc false
+
+  alias Teiserver.Helpers.GeneralTestLib
+  alias Teiserver.TeiserverTestLib
+
   use TeiserverWeb.ConnCase
+
   import Teiserver.MicroblogFixtures
 
-  defp auth_setup(_) do
-    Central.Helpers.GeneralTestLib.conn_setup()
-    |> Teiserver.TeiserverTestLib.conn_setup()
+  defp auth_setup(_context) do
+    GeneralTestLib.conn_setup()
+    |> TeiserverTestLib.conn_setup()
   end
 
-  defp filler_posts(_) do
+  defp filler_posts(_context) do
     tag1 = tag_fixture()
     tag2 = tag_fixture()
     tag3 = tag_fixture()

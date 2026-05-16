@@ -1,13 +1,53 @@
 defmodule Teiserver.Account do
   @moduledoc false
-  import Ecto.Query, warn: false
-  alias Teiserver.Repo
-  require Logger
-  alias Teiserver.Data.Types, as: T
+
   alias Phoenix.PubSub
-  alias Teiserver.Helper.QueryHelpers
+  alias Teiserver.Account.Accolade
+  alias Teiserver.Account.AccoladeLib
+  alias Teiserver.Account.Auth
+  alias Teiserver.Account.BadgeType
+  alias Teiserver.Account.BadgeTypeLib
+  alias Teiserver.Account.ClientLib
+  alias Teiserver.Account.Code
+  alias Teiserver.Account.CodeLib
+  alias Teiserver.Account.Friend
+  alias Teiserver.Account.FriendLib
+  alias Teiserver.Account.FriendQueries
+  alias Teiserver.Account.FriendRequest
+  alias Teiserver.Account.FriendRequestLib
+  alias Teiserver.Account.FriendRequestQueries
+  alias Teiserver.Account.LoginThrottleServer
+  alias Teiserver.Account.PartyLib
+  alias Teiserver.Account.Rating
+  alias Teiserver.Account.RatingLib
+  alias Teiserver.Account.Relationship
+  alias Teiserver.Account.RelationshipLib
+  alias Teiserver.Account.RelationshipQueries
+  alias Teiserver.Account.SmurfKey
+  alias Teiserver.Account.SmurfKeyLib
+  alias Teiserver.Account.SmurfKeyType
+  alias Teiserver.Account.SmurfKeyTypeLib
+  alias Teiserver.Account.TOTP
+  alias Teiserver.Account.TOTPLib
+  alias Teiserver.Account.User
+  alias Teiserver.Account.UserCacheLib
+  alias Teiserver.Account.UserLib
+  alias Teiserver.Account.UserStat
+  alias Teiserver.Account.UserStatLib
+  alias Teiserver.Account.UserToken
+  alias Teiserver.Account.UserTokenLib
+  alias Teiserver.Config
+  alias Teiserver.Data.Types, as: T
   alias Teiserver.Game.MatchRatingLib
-  alias Teiserver.Account.{User, UserLib, TOTP, TOTPLib, LoginThrottleServer}
+  alias Teiserver.Helper.QueryHelpers
+  alias Teiserver.Plugins
+  alias Teiserver.Repo
+
+  use Plugins
+
+  require Logger
+
+  import Ecto.Query, warn: false
 
   @spec icon :: String.t()
   def icon, do: "fa-solid fa-user-alt"
@@ -121,9 +161,6 @@ defmodule Teiserver.Account do
   defdelegate generate_otpauth_uri(name, secret), to: TOTPLib
 
   # User stat table
-  alias Teiserver.Account.UserStat
-  alias Teiserver.Account.UserStatLib
-
   @spec user_stat_query(nil | maybe_improper_list | map) :: Ecto.Query.t()
   def user_stat_query(args) do
     user_stat_query(nil, args)
@@ -206,7 +243,7 @@ defmodule Teiserver.Account do
     data =
       data
       |> Enum.map(fn {k, v} -> {to_string(k), v} end)
-      |> Enum.filter(fn {_, v} -> v != nil end)
+      |> Enum.filter(fn {_key, v} -> v != nil end)
       |> Map.new()
 
     case get_user_stat(userid) do
@@ -245,8 +282,6 @@ defmodule Teiserver.Account do
     Repo.delete(user_stat)
   end
 
-  alias Teiserver.Account.{BadgeType, BadgeTypeLib}
-
   @spec badge_type_query(keyword()) :: Ecto.Query.t()
   def badge_type_query(args) do
     badge_type_query(nil, args)
@@ -279,7 +314,7 @@ defmodule Teiserver.Account do
   end
 
   @spec list_accolade_types() :: list()
-  def list_accolade_types() do
+  def list_accolade_types do
     args = [search: [purpose: "Accolade"], order_by: "Name (A-Z)"]
 
     badge_type_query(args)
@@ -406,9 +441,6 @@ defmodule Teiserver.Account do
   def change_badge_type(%BadgeType{} = badge_type) do
     BadgeType.changeset(badge_type, %{})
   end
-
-  alias Teiserver.Account.Accolade
-  alias Teiserver.Account.AccoladeLib
 
   @spec accolade_query(keyword()) :: Ecto.Query.t()
   def accolade_query(args) do
@@ -562,9 +594,6 @@ defmodule Teiserver.Account do
     Accolade.changeset(accolade, %{})
   end
 
-  alias Teiserver.Account.SmurfKey
-  alias Teiserver.Account.SmurfKeyLib
-
   @spec smurf_key_query(keyword()) :: Ecto.Query.t()
   def smurf_key_query(args) do
     smurf_key_query(nil, args)
@@ -702,7 +731,7 @@ defmodule Teiserver.Account do
         update_smurf_key(existing, %{last_updated: Timex.now()})
         {:ok, existing}
 
-      [existing | _] ->
+      [existing | _rest] ->
         Logger.error(
           "#{__MODULE__}.create_smurf_key found user with two identical keys: #{user_id}, #{type_id}, #{value}"
         )
@@ -785,9 +814,6 @@ defmodule Teiserver.Account do
     |> Enum.group_by(fn sk -> {sk.type.name, sk.value} end)
     |> Enum.sort_by(fn {key, _value} -> key end, &<=/2)
   end
-
-  alias Teiserver.Account.SmurfKeyType
-  alias Teiserver.Account.SmurfKeyTypeLib
 
   @spec smurf_key_type_query(keyword()) :: Ecto.Query.t()
   def smurf_key_type_query(args) do
@@ -905,13 +931,11 @@ defmodule Teiserver.Account do
 
           key_type.id
 
-        [%{id: id} | _] ->
+        [%{id: id} | _rest] ->
           id
       end
     end)
   end
-
-  alias Teiserver.Account.{Rating, RatingLib}
 
   @spec rating_query(keyword()) :: Ecto.Query.t()
   def rating_query(args) do
@@ -1049,7 +1073,7 @@ defmodule Teiserver.Account do
       {:ok, r} ->
         Teiserver.cache_put(:teiserver_user_ratings, {r.user_id, r.rating_type_id, r.season}, r)
 
-      _ ->
+      _error ->
         nil
     end
 
@@ -1098,8 +1122,6 @@ defmodule Teiserver.Account do
   end
 
   # Codes
-  alias Teiserver.Account.{Code, CodeLib}
-
   def code_query(args) do
     code_query(nil, args)
   end
@@ -1239,8 +1261,6 @@ defmodule Teiserver.Account do
   def change_code(%Code{} = code) do
     Code.changeset(code, %{})
   end
-
-  alias Teiserver.Account.{UserToken, UserTokenLib}
 
   def user_token_query(args) do
     user_token_query(nil, args)
@@ -1400,8 +1420,6 @@ defmodule Teiserver.Account do
     |> Base.encode64(padding: false)
     |> binary_part(0, length)
   end
-
-  alias Teiserver.Account.{Relationship, RelationshipLib, RelationshipQueries}
 
   @doc """
   Returns the list of relationships.
@@ -1647,8 +1665,6 @@ defmodule Teiserver.Account do
   defdelegate profile_view_permissions(u1, u2, relationship, friend, friendship_request),
     to: RelationshipLib
 
-  alias Teiserver.Account.{Friend, FriendLib, FriendQueries}
-
   @doc """
   Returns the list of friends.
 
@@ -1747,7 +1763,7 @@ defmodule Teiserver.Account do
         Teiserver.cache_delete(:account_friend_cache, friend.user1_id)
         Teiserver.cache_delete(:account_friend_cache, friend.user2_id)
 
-      _ ->
+      _error ->
         :ok
     end
 
@@ -1848,8 +1864,6 @@ defmodule Teiserver.Account do
   @spec list_friend_ids_of_user(T.userid()) :: [T.userid()]
   defdelegate list_friend_ids_of_user(userid), to: FriendLib
 
-  alias Teiserver.Account.{FriendRequest, FriendRequestLib, FriendRequestQueries}
-
   @doc """
   Returns the list of friend_requests.
 
@@ -1943,54 +1957,55 @@ defmodule Teiserver.Account do
 
         existing_request ->
           # Auto-accept the existing request
-          # credo:disable-for-next-line Credo.Check.Readability.WithSingleClause
-          with :ok <- FriendRequestLib.accept_friend_request(existing_request) do
-            # Send pubsub broadcasts for both users to update UI
-            PubSub.broadcast(
-              Teiserver.PubSub,
-              "account_user_relationships:#{existing_request.from_user_id}",
-              %{
-                channel: "account_user_relationships:#{existing_request.from_user_id}",
-                event: :friend_request_accepted,
-                userid: existing_request.from_user_id,
-                accepter_id: existing_request.to_user_id
-              }
-            )
 
-            PubSub.broadcast(
-              Teiserver.PubSub,
-              "account_user_relationships:#{existing_request.to_user_id}",
-              %{
-                channel: "account_user_relationships:#{existing_request.to_user_id}",
-                event: :friend_request_accepted,
-                userid: existing_request.to_user_id,
-                accepter_id: existing_request.from_user_id
-              }
-            )
+          case FriendRequestLib.accept_friend_request(existing_request) do
+            :ok ->
+              # Send pubsub broadcasts for both users to update UI
+              PubSub.broadcast(
+                Teiserver.PubSub,
+                "account_user_relationships:#{existing_request.from_user_id}",
+                %{
+                  channel: "account_user_relationships:#{existing_request.from_user_id}",
+                  event: :friend_request_accepted,
+                  userid: existing_request.from_user_id,
+                  accepter_id: existing_request.to_user_id
+                }
+              )
 
-            # Clear caches for both users
-            Teiserver.cache_delete(
-              :account_incoming_friend_request_cache,
-              existing_request.from_user_id
-            )
+              PubSub.broadcast(
+                Teiserver.PubSub,
+                "account_user_relationships:#{existing_request.to_user_id}",
+                %{
+                  channel: "account_user_relationships:#{existing_request.to_user_id}",
+                  event: :friend_request_accepted,
+                  userid: existing_request.to_user_id,
+                  accepter_id: existing_request.from_user_id
+                }
+              )
 
-            Teiserver.cache_delete(
-              :account_outgoing_friend_request_cache,
-              existing_request.from_user_id
-            )
+              # Clear caches for both users
+              Teiserver.cache_delete(
+                :account_incoming_friend_request_cache,
+                existing_request.from_user_id
+              )
 
-            Teiserver.cache_delete(
-              :account_incoming_friend_request_cache,
-              existing_request.to_user_id
-            )
+              Teiserver.cache_delete(
+                :account_outgoing_friend_request_cache,
+                existing_request.from_user_id
+              )
 
-            Teiserver.cache_delete(
-              :account_outgoing_friend_request_cache,
-              existing_request.to_user_id
-            )
+              Teiserver.cache_delete(
+                :account_incoming_friend_request_cache,
+                existing_request.to_user_id
+              )
 
-            {:ok, :auto_accepted}
-          else
+              Teiserver.cache_delete(
+                :account_outgoing_friend_request_cache,
+                existing_request.to_user_id
+              )
+
+              {:ok, :auto_accepted}
+
             {:error, reason} ->
               {:error, reason}
           end
@@ -2001,15 +2016,17 @@ defmodule Teiserver.Account do
   end
 
   defp create_new_friend_request(from_user_id, to_user_id) do
-    Repo.transaction(fn ->
-      case %FriendRequest{from_user_id: from_user_id, to_user_id: to_user_id}
-           |> FriendRequest.changeset(%{})
-           |> Repo.insert() do
-        {:ok, struct} -> struct
-        {:error, changeset} -> Repo.rollback(changeset)
-      end
-    end)
-    |> case do
+    result =
+      Repo.transaction(fn ->
+        case %FriendRequest{from_user_id: from_user_id, to_user_id: to_user_id}
+             |> FriendRequest.changeset(%{})
+             |> Repo.insert() do
+          {:ok, struct} -> struct
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
+      end)
+
+    case result do
       {:ok, friend_request} ->
         PubSub.broadcast(
           Teiserver.PubSub,
@@ -2123,7 +2140,6 @@ defmodule Teiserver.Account do
   defdelegate rescind_friend_request(req), to: FriendRequestLib
 
   # User functions
-  alias Teiserver.Account.UserCacheLib
 
   @spec get_username(T.userid()) :: String.t() | nil
   defdelegate get_username(userid), to: UserCacheLib
@@ -2182,24 +2198,7 @@ defmodule Teiserver.Account do
   @spec system_change_user_name(T.userid(), String.t()) :: :ok
   defdelegate system_change_user_name(userid, new_name), to: Teiserver.CacheUser
 
-  @spec has_any_role?(T.userid() | T.user() | nil, String.t() | [String.t()]) :: boolean()
-  defdelegate has_any_role?(user_or_userid, roles), to: Teiserver.CacheUser
-
-  @spec has_all_roles?(T.userid() | T.user() | nil, String.t() | [String.t()]) :: boolean()
-  defdelegate has_all_roles?(user_or_userid, roles), to: Teiserver.CacheUser
-
-  @spec is_moderator?(T.userid() | T.user()) :: boolean()
-  defdelegate is_moderator?(userid), to: Teiserver.CacheUser
-
-  @spec is_bot?(T.userid() | T.user()) :: boolean()
-  defdelegate is_bot?(userid), to: Teiserver.CacheUser
-
-  @spec is_restricted?(T.userid() | T.user(), String.t()) :: boolean()
-  defdelegate is_restricted?(user, restriction), to: Teiserver.CacheUser
-
   # Client stuff
-  alias Teiserver.Account.ClientLib
-
   @spec get_client_by_name(String.t()) :: nil | T.client()
   defdelegate get_client_by_name(name), to: ClientLib
 
@@ -2224,7 +2223,6 @@ defmodule Teiserver.Account do
   @spec update_client(T.userid(), map()) :: nil | :ok
   defdelegate update_client(userid, partial_client), to: ClientLib
 
-  # credo:disable-for-next-line Credo.Check.Design.TagTODO
   # TODO: Remove these in favour of update_client
   @spec merge_update_client(map()) :: nil | :ok
   defdelegate merge_update_client(client), to: ClientLib
@@ -2257,7 +2255,6 @@ defmodule Teiserver.Account do
   defdelegate count_non_bot_clients(), to: ClientLib
 
   # Party stuff
-  alias Teiserver.Account.PartyLib
 
   @spec list_party_ids() :: [T.party_id()]
   defdelegate list_party_ids(), to: PartyLib
@@ -2333,14 +2330,55 @@ defmodule Teiserver.Account do
   end
 
   @spec can_register?() :: boolean()
-  def can_register?(),
-    do: Teiserver.Config.get_site_config_cache("teiserver.Enable registrations")
+  def can_register?,
+    do: Config.get_site_config_cache("teiserver.Enable registrations")
 
   @spec can_register_with_web?() :: boolean()
-  def can_register_with_web?() do
+  def can_register_with_web? do
     can_register?() &&
-      not Teiserver.Config.get_site_config_cache("teiserver.Require Chobby registration")
+      not Config.get_site_config_cache("teiserver.Require Chobby registration")
   end
 
+  defdelegate set_login_limit(limit), to: LoginThrottleServer
   defdelegate reset_login_rate_limiter(rate), to: LoginThrottleServer, as: :reset_rate_limiter
+
+  @spec verify_user(User.t() | T.userid()) :: map() | nil
+  def verify_user(%User{} = user) do
+    delete_user_stat_keys(user.id, ~w(verification_code))
+
+    Auth.add_roles(user, ["Verified"])
+  end
+
+  def verify_user(userid) when is_integer(userid) do
+    get_user(userid) |> verify_user()
+  end
+
+  @spec restricted?(T.userid() | User.t() | nil, String.t() | [String.t()]) :: boolean()
+  def restricted?(nil, _restriction), do: true
+
+  def restricted?(userid, restriction) when is_integer(userid),
+    do: restricted?(get_user(userid), restriction)
+
+  def restricted?(%User{} = %{restrictions: restrictions}, restriction_list)
+      when is_list(restriction_list) do
+    restriction_list
+    |> Enum.map(fn r -> Enum.member?(restrictions, r) end)
+    |> Enum.any?()
+  end
+
+  def restricted?(%User{} = %{restrictions: restrictions}, the_restriction) do
+    Enum.member?(restrictions, the_restriction)
+  end
+
+  @spec has_mute?(User.t()) :: boolean()
+  @decorate Plugins.plugin(:has_mute?)
+  def has_mute?(%User{} = user) do
+    restricted?(user, [
+      "All chat",
+      "Room chat",
+      "Direct chat",
+      "Lobby chat",
+      "Battle chat"
+    ])
+  end
 end

@@ -1,7 +1,10 @@
 defmodule Teiserver.Moderation.Action do
   @moduledoc false
-  use TeiserverWeb, :schema
+
+  alias Ecto.Changeset
   alias Teiserver.Helper.TimexHelper
+
+  use TeiserverWeb, :schema
 
   typed_schema "moderation_actions" do
     belongs_to :target, Teiserver.Account.User
@@ -16,13 +19,10 @@ defmodule Teiserver.Moderation.Action do
 
     field :discord_message_id, :integer
 
-    # No longer set nowadays
-    belongs_to :report_group, Teiserver.Moderation.ReportGroup
-
     timestamps()
   end
 
-  @spec changeset(map(), map()) :: Ecto.Changeset.t()
+  @spec changeset(map(), map()) :: Changeset.t()
   def changeset(struct, params \\ %{}) do
     params =
       params
@@ -32,7 +32,7 @@ defmodule Teiserver.Moderation.Action do
     struct
     |> cast(
       params,
-      ~w(target_id report_group_id reason restrictions score_modifier expires notes hidden discord_message_id appeal_status)a
+      ~w(target_id reason restrictions score_modifier expires notes hidden discord_message_id appeal_status)a
     )
     |> validate_required(~w(target_id reason restrictions expires score_modifier)a)
     |> adjust_restrictions()
@@ -41,8 +41,8 @@ defmodule Teiserver.Moderation.Action do
 
   defp adjust_restrictions(%Ecto.Changeset{} = struct) do
     years = Timex.now() |> Timex.shift(years: 10)
-    expires = Ecto.Changeset.get_field(struct, :expires, [])
-    inbound_restrictions = Ecto.Changeset.get_field(struct, :restrictions, [])
+    expires = Changeset.get_field(struct, :expires, [])
+    inbound_restrictions = Changeset.get_field(struct, :restrictions, [])
 
     new_restrictions =
       if TimexHelper.greater_than(expires, years) and Enum.member?(inbound_restrictions, "Login") do
@@ -51,12 +51,12 @@ defmodule Teiserver.Moderation.Action do
         (inbound_restrictions || []) |> List.delete("Permanently banned")
       end
 
-    Ecto.Changeset.put_change(struct, :restrictions, new_restrictions)
+    Changeset.put_change(struct, :restrictions, new_restrictions)
   end
 
   @spec authorize(atom(), Plug.Conn.t(), map()) :: bool()
-  def authorize(:index, conn, _), do: allow?(conn, "Overwatch")
-  def authorize(:search, conn, _), do: allow?(conn, "Overwatch")
-  def authorize(:show, conn, _), do: allow?(conn, "Overwatch")
-  def authorize(_, conn, _), do: allow?(conn, "Moderator")
+  def authorize(:index, conn, _params), do: allow?(conn, "Overwatch")
+  def authorize(:search, conn, _params), do: allow?(conn, "Overwatch")
+  def authorize(:show, conn, _params), do: allow?(conn, "Overwatch")
+  def authorize(_action, conn, _params), do: allow?(conn, "Moderator")
 end

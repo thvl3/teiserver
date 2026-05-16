@@ -1,16 +1,17 @@
 defmodule Teiserver.Matchmaking.AlgosTest do
-  use ExUnit.Case
+  alias Teiserver.Matchmaking.Algo.BruteforceFilter
+  alias Teiserver.Matchmaking.Algo.IgnoreOs
   alias Teiserver.Matchmaking.Member
-  alias Teiserver.Matchmaking.Algo
+  use ExUnit.Case
 
   def ignore_os(members, team_size, team_count) do
-    st = Algo.IgnoreOs.init(team_size, team_count)
-    Algo.IgnoreOs.get_matches(members, st)
+    st = IgnoreOs.init(team_size, team_count)
+    IgnoreOs.get_matches(members, st)
   end
 
   def brutefore_filter(members, team_size, team_count) do
-    st = Algo.BruteforceFilter.init(team_size, team_count)
-    Algo.BruteforceFilter.get_matches(members, st)
+    st = BruteforceFilter.init(team_size, team_count)
+    BruteforceFilter.get_matches(members, st)
   end
 
   describe "ignore OS" do
@@ -66,7 +67,7 @@ defmodule Teiserver.Matchmaking.AlgosTest do
 
     test "ordering doesn't matter" do
       members = [mk_member(0), mk_member(1), mk_member([2, 3]), mk_member([4, 5])]
-      assert {:match, _} = ignore_os(members, 3, 2)
+      assert {:match, _teams} = ignore_os(members, 3, 2)
     end
   end
 

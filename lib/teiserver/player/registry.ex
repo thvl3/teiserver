@@ -10,8 +10,9 @@ defmodule Teiserver.Player.Registry do
   """
 
   alias Teiserver.Data.Types, as: T
+  alias Teiserver.Player.TachyonHandler
 
-  def start_link() do
+  def start_link do
     Horde.Registry.start_link(keys: :unique, name: __MODULE__)
   end
 
@@ -36,7 +37,7 @@ defmodule Teiserver.Player.Registry do
 
       {:error, {:already_registered, existing_conn_pid}} ->
         Horde.Registry.unregister(__MODULE__, via_tuple(user_id))
-        Teiserver.Player.TachyonHandler.force_disconnect(existing_conn_pid)
+        TachyonHandler.force_disconnect(existing_conn_pid)
         :timer.sleep(1)
         register_and_kill_existing(user_id)
     end
@@ -52,20 +53,20 @@ defmodule Teiserver.Player.Registry do
   @spec lookup(T.userid()) :: pid() | nil
   def lookup(user_id) do
     case Horde.Registry.lookup(__MODULE__, via_tuple(user_id)) do
-      [{pid, _}] -> pid
-      _ -> nil
+      [{pid, _value}] -> pid
+      _other -> nil
     end
   end
 
   @spec connected_count() :: non_neg_integer()
-  def connected_count() do
+  def connected_count do
     case Horde.Registry.count(__MODULE__) do
       :undefined -> 0
       x -> x
     end
   end
 
-  def child_spec(_) do
+  def child_spec(_opts) do
     Supervisor.child_spec(Horde.Registry,
       id: __MODULE__,
       start: {__MODULE__, :start_link, []}

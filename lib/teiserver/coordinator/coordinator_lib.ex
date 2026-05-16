@@ -1,6 +1,7 @@
 defmodule Teiserver.Coordinator.CoordinatorLib do
+  @moduledoc false
+  alias Teiserver.Account.Auth
   alias Teiserver.Data.Types, as: T
-  alias Teiserver.CacheUser
 
   @spec help(T.user(), boolean(), String.t()) :: String.t()
   def help(user, host, command) do
@@ -53,7 +54,7 @@ or are following someone that voted yes are also moved to that lobby.", :everybo
       {"welcome-message", ["message"],
        "Sets the welcome message sent to anybody joining the lobby. Run this command without a message to clear the existing message. Requires boss privileges. Use $$ to add a line return.",
        :everybody},
-      {"gatekeeper", ["(default | friends | friendsplay | clan)"],
+      {"gatekeeper", ["(default | friends | friendsplay)"],
        "sets the gatekeeper for this battle. Requires boss privileges.
 > default: no limitations
 > friends allows only friends of existing members to join the lobby
@@ -81,11 +82,6 @@ or are following someone that voted yes are also moved to that lobby.", :everybo
       {"resetchevlevels", [],
        "Resets the chevron level restrictions to not exist. Requires boss privileges.",
        :everybody},
-      # credo:disable-for-lines:4 Credo.Check.Readability.MaxLineLength
-      # {"resetranklevels", [], "Resets the rank level limits to not exist. Player limiting commands are designed to be used with $rename, please be careful not to abuse them. Requires boss privileges.", :everybody},
-      # {"minranklevel", ["min-level"], "Sets the minimum rank level for players, you must be at least this rank to be a player. Requires boss privileges.", :everybody},
-      # {"maxranklevel", ["max-level"], "Sets the maximum rank level for players, you must be at below this rank to be a player. Requires boss privileges.", :everybody},
-      # {"setranklevels", ["min-level", "max-level"], "Sets the minimum and maximum rank levels for players. Requires boss privileges.", :everybody},
 
       # ---- "hosts" only ----
       {"lock", ["(team | player | spectator | side)"],
@@ -153,7 +149,7 @@ Multiple locks can be engaged at the same time
         arg_str = args |> Enum.map(fn a -> " <#{a}>" end)
         "$#{cmd}#{arg_str}\n#{desc}"
 
-      _ ->
+      _multiple ->
         if command != "" do
           "No commands matching that filter."
         else
@@ -224,7 +220,7 @@ Multiple locks can be engaged at the same time
     case result do
       {false, true, split} -> {:complete, split}
       {false, false, split} -> {:complete, remove_circular(split)}
-      {true, _, split} -> {:incomplete, split}
+      {true, _complete, split} -> {:incomplete, split}
     end
   end
 
@@ -235,7 +231,7 @@ Multiple locks can be engaged at the same time
       new_v =
         case v do
           true -> true
-          _ -> nil
+          _other -> nil
         end
 
       {k, new_v}
@@ -246,9 +242,9 @@ Multiple locks can be engaged at the same time
   defp can_use?(user, host, group) do
     case group do
       :everybody -> true
-      :host -> CacheUser.is_moderator?(user) or host
-      :moderator -> CacheUser.is_moderator?(user)
-      _ -> false
+      :host -> Auth.admin?(user) or Auth.moderator?(user) or host
+      :moderator -> Auth.admin?(user) or Auth.moderator?(user)
+      _other -> false
     end
   end
 end

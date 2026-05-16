@@ -1,16 +1,15 @@
 defmodule Teiserver.Account.BanEvasionReport do
-  @moduledoc """
+  @moduledoc false
 
-  """
-  alias Teiserver.{Account}
-  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
+  alias Teiserver.Account
   require Logger
+  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-user-ninja"
+  def icon, do: "fa-solid fa-user-ninja"
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Moderator"
+  def permissions, do: "Moderator"
 
   @spec run(Plug.Conn.t(), map()) :: map()
   def run(_conn, params) do
@@ -90,10 +89,7 @@ defmodule Teiserver.Account.BanEvasionReport do
       |> Enum.filter(fn u ->
         stats = user_stats[u.id]
 
-        cond do
-          (stats["smurf_count"] || 0) > 0 -> false
-          true -> true
-        end
+        (stats["smurf_count"] || 0) <= 0
       end)
 
     %{
@@ -103,7 +99,7 @@ defmodule Teiserver.Account.BanEvasionReport do
     }
   end
 
-  defp get_valid_key_types() do
+  defp get_valid_key_types do
     Account.list_smurf_key_types(
       search: [
         name_in: ["chobby_mac_hash"]

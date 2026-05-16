@@ -1,17 +1,19 @@
 defmodule Teiserver.Telemetry.ComplexMatchEventLib do
   @moduledoc false
-  use TeiserverWeb, :library_newform
-  alias Teiserver.Telemetry
-  alias Teiserver.Telemetry.{ComplexMatchEvent, ComplexMatchEventQueries}
+
   alias Phoenix.PubSub
+  alias Teiserver.Telemetry
+  alias Teiserver.Telemetry.ComplexMatchEvent
+  alias Teiserver.Telemetry.ComplexMatchEventQueries
+  use TeiserverWeb, :library_newform
 
   @broadcast_event_types ~w()
 
   @spec colour :: atom
-  def colour(), do: :info2
+  def colour, do: :info2
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-chess-queen"
+  def icon, do: "fa-chess-queen"
 
   @spec log_complex_match_event(T.userid(), T.match_id(), String, non_neg_integer, map()) ::
           {:error, Ecto.Changeset} | {:ok, ComplexLobbyEvent}
@@ -47,7 +49,7 @@ defmodule Teiserver.Telemetry.ComplexMatchEventLib do
 
         result
 
-      _ ->
+      _error ->
         result
     end
   end

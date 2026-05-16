@@ -1,7 +1,9 @@
 defmodule Teiserver.Telemetry.ComplexLobbyEventTypeLib do
   @moduledoc false
+
+  alias Teiserver.Telemetry.ComplexLobbyEventType
+  alias Teiserver.Telemetry.ComplexLobbyEventTypeQueries
   use TeiserverWeb, :library_newform
-  alias Teiserver.Telemetry.{ComplexLobbyEventType, ComplexLobbyEventTypeQueries}
 
   # Helper function
   @spec get_or_add_complex_lobby_event_type(String.t()) :: non_neg_integer()
@@ -25,7 +27,7 @@ defmodule Teiserver.Telemetry.ComplexLobbyEventTypeLib do
 
           event_type.id
 
-        [%{id: id} | _] ->
+        [%{id: id} | _rest] ->
           id
       end
     end)
@@ -110,7 +112,10 @@ defmodule Teiserver.Telemetry.ComplexLobbyEventTypeLib do
   """
   @spec update_complex_lobby_event_type(ComplexLobbyEventType, map) ::
           {:ok, ComplexLobbyEventType} | {:error, Ecto.Changeset}
-  def update_complex_lobby_event_type(%ComplexLobbyEventType{} = complex_lobby_event_type, attrs) do
+  def update_complex_lobby_event_type(
+        %ComplexLobbyEventType{} = complex_lobby_event_type,
+        attrs
+      ) do
     complex_lobby_event_type
     |> ComplexLobbyEventType.changeset(attrs)
     |> Repo.update()

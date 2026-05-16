@@ -4,9 +4,10 @@ defmodule Teiserver.Benchmark.UserClient do
   noise on the server. This one though will report on it's
   ping and the like.
   """
-  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
-  require Logger
+
   use GenServer
+  require Logger
+  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
 
   @statuses ~w(4195330 4195394 4194374)
 
@@ -29,7 +30,7 @@ defmodule Teiserver.Benchmark.UserClient do
 
     # Now we get a list of those battles and randomly join one or none at all
     case Regex.run(~r/BATTLEIDS ([\d ]+)\n/, reply) do
-      [_, ids] ->
+      [_full_match, ids] ->
         ids =
           ids
           |> String.split(" ")
@@ -37,7 +38,7 @@ defmodule Teiserver.Benchmark.UserClient do
 
         join_battle(Enum.random(ids), state)
 
-      _ ->
+      _other ->
         state
     end
 
@@ -90,12 +91,14 @@ defmodule Teiserver.Benchmark.UserClient do
     # Random start so we don't get them all at the same time
     :timer.sleep(state.initial_delay)
 
+    port = int_parse(state.port)
+
     {:ok, socket} =
-      :gen_tcp.connect(to_charlist(state.server), int_parse(state.port), active: false)
+      state.server |> to_charlist() |> :gen_tcp.connect(port, active: false)
 
     _send(socket, "TMPLI TEST_#{state.id}\n")
 
-    _ = _recv(socket)
+    _reply = _recv(socket)
 
     _send(socket, "JOIN main\n")
     _send(socket, "JOIN tick_#{state.tick}\n")

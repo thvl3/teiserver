@@ -1,9 +1,8 @@
 defmodule Teiserver.Account.BadgeTypeLib do
-  @moduledoc """
+  @moduledoc false
 
-  """
-  use TeiserverWeb, :library
   alias Teiserver.Account.BadgeType
+  use TeiserverWeb, :library
 
   # Functions
   @spec icon :: String.t()
@@ -13,7 +12,7 @@ defmodule Teiserver.Account.BadgeTypeLib do
   def colours, do: :warning2
 
   @spec purpose_list() :: [String.t()]
-  def purpose_list(),
+  def purpose_list,
     do: [
       # Always positive, limited in how often they can be given out
       "Accolade",
@@ -29,7 +28,7 @@ defmodule Teiserver.Account.BadgeTypeLib do
     ]
 
   @spec restriction_list() :: [String.t()]
-  def restriction_list(),
+  def restriction_list,
     do: [
       nil,
       "Ally",
@@ -67,8 +66,8 @@ defmodule Teiserver.Account.BadgeTypeLib do
   end
 
   @spec _search(Ecto.Query.t(), atom(), any()) :: Ecto.Query.t()
-  def _search(query, _, ""), do: query
-  def _search(query, _, nil), do: query
+  def _search(query, _key, ""), do: query
+  def _search(query, _key, nil), do: query
 
   def _search(query, :id, id) do
     from badge_types in query,
@@ -128,13 +127,7 @@ defmodule Teiserver.Account.BadgeTypeLib do
     query
   end
 
-  # def _preload_things(query) do
-  #   from badge_types in query,
-  #     left_join: things in assoc(badge_types, :things),
-  #     preload: [things: things]
-  # end
-
-  def nil_badge_type() do
+  def nil_badge_type do
     %{
       name: "No badge",
       icon: "fa-solid fa-square",

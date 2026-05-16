@@ -1,9 +1,11 @@
 defmodule TeiserverWeb.Admin.LobbyController do
-  use TeiserverWeb, :controller
-  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
-
-  alias Teiserver.{Chat, Battle}
+  alias Teiserver.Battle
   alias Teiserver.Battle.MatchLib
+  alias Teiserver.Chat
+
+  use TeiserverWeb, :controller
+
+  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
 
   plug(AssignPlug,
     site_menu_active: "admin",
@@ -11,6 +13,7 @@ defmodule TeiserverWeb.Admin.LobbyController do
   )
 
   plug(Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Staff.Overwatch,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}
@@ -52,7 +55,7 @@ defmodule TeiserverWeb.Admin.LobbyController do
         [match] ->
           match
 
-        _ ->
+        _no_match ->
           nil
       end
 

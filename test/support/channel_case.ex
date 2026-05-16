@@ -15,6 +15,8 @@ defmodule TeiserverWeb.ChannelCase do
   this option is not recommended for other databases.
   """
 
+  alias Ecto.Adapters.SQL.Sandbox
+
   use ExUnit.CaseTemplate
 
   using do
@@ -23,16 +25,18 @@ defmodule TeiserverWeb.ChannelCase do
       import Phoenix.ChannelTest
       import TeiserverWeb.ChannelCase
 
+      alias Ecto.Adapters.SQL.Sandbox
+
       # The default endpoint for testing
       @endpoint TeiserverWeb.Endpoint
     end
   end
 
   setup tags do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Teiserver.Repo)
+    :ok = Sandbox.checkout(Teiserver.Repo)
 
     if !tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(Teiserver.Repo, {:shared, self()})
+      Sandbox.mode(Teiserver.Repo, {:shared, self()})
     end
 
     :ok

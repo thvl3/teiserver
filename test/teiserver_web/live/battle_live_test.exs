@@ -1,26 +1,25 @@
 defmodule TeiserverWeb.Live.BattleTest do
-  alias Teiserver.CacheUser
+  alias Teiserver.Account.Auth
+  alias Teiserver.Helpers.GeneralTestLib
+  alias Teiserver.Lobby
+  alias Teiserver.TeiserverTestLib
   use TeiserverWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
-
-  alias Central.Helpers.GeneralTestLib
-  alias Teiserver.{TeiserverTestLib, Lobby}
-  import Teiserver.TeiserverTestLib, only: [_send_raw: 2, _recv_until: 1]
   import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
+  import TeiserverTestLib, only: [_send_raw: 2, _recv_until: 1]
 
   @throttle_wait 500 + 100
 
   @moduletag :needs_attention
 
   setup do
-    GeneralTestLib.conn_setup(Teiserver.TeiserverTestLib.player_permissions())
+    GeneralTestLib.conn_setup(TeiserverTestLib.player_permissions())
     |> TeiserverTestLib.conn_setup()
   end
 
   describe "battle live" do
     test "index", %{conn: conn, user: user} do
-      {:ok, view, html} = live(conn, "/battle/lobbies")
-      assert html =~ "No lobbies found"
+      {:ok, view, _html} = live(conn, "/battle/lobbies")
 
       # Lets create a battle
       battle1 =
@@ -85,10 +84,10 @@ defmodule TeiserverWeb.Live.BattleTest do
 
     @tag :needs_attention
     test "show - valid battle", %{conn: conn} do
-      {:ok, server_context} = Teiserver.TeiserverTestLib.start_spring_server()
+      {:ok, server_context} = TeiserverTestLib.start_spring_server()
       # Lets create a battle
       %{socket: host_socket, user: host_user} = TeiserverTestLib.auth_setup(server_context)
-      CacheUser.add_roles(host_user, ["Bot"])
+      Auth.add_roles(host_user.id, ["Bot"])
 
       _send_raw(
         host_socket,
@@ -106,7 +105,7 @@ defmodule TeiserverWeb.Live.BattleTest do
         _tags,
         _battle_status,
         _battle_opened
-        | _
+        | _rest
       ] = reply
 
       lobby_id =
@@ -134,7 +133,7 @@ defmodule TeiserverWeb.Live.BattleTest do
 
       # Currently we don't show spectators, we just want to ensure it doesn't crash
       _html = render(view)
-      # credo:disable-for-next-line Credo.Check.Design.TagTODO
+
       # TODO: handle showing of spectators
 
       # # Team 0

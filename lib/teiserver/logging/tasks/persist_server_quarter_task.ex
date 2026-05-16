@@ -1,13 +1,15 @@
 defmodule Teiserver.Logging.Tasks.PersistServerQuarterTask do
   @moduledoc false
-  use Oban.Worker, queue: :teiserver
+
   alias Teiserver.Logging
   alias Teiserver.Logging.ServerDayLogLib
+  alias Teiserver.Logging.Tasks.PersistServerQuarterTask
+  use Oban.Worker, queue: :teiserver
   import Ecto.Query, warn: false
 
   @impl Oban.Worker
   @spec perform(any) :: :ok
-  def perform(_) do
+  def perform(_job) do
     log =
       case Logging.get_last_server_quarter_log() do
         nil ->
@@ -19,7 +21,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerQuarterTask do
 
     if log != nil do
       %{}
-      |> Teiserver.Logging.Tasks.PersistServerQuarterTask.new()
+      |> PersistServerQuarterTask.new()
       |> Oban.insert()
     end
 
@@ -28,7 +30,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerQuarterTask do
 
   # For when there are no existing logs
   # we need to ensure the earliest log is from last quarter, not this quarter
-  defp perform_first_time() do
+  defp perform_first_time do
     first_logs =
       Logging.list_server_day_logs(
         order: "Oldest first",
@@ -64,7 +66,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerQuarterTask do
             |> Enum.zip(user_activity_logs)
             |> ServerDayLogLib.aggregate_day_logs()
 
-          {:ok, _} =
+          {:ok, _log} =
             Logging.create_server_quarter_log(%{
               year: log.date.year,
               quarter: log_quarter,
@@ -73,7 +75,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerQuarterTask do
             })
         end
 
-      _ ->
+      _empty ->
         nil
     end
   end
@@ -109,7 +111,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerQuarterTask do
         |> Enum.zip(user_activity_logs)
         |> ServerDayLogLib.aggregate_day_logs()
 
-      {:ok, _} =
+      {:ok, _log} =
         Logging.create_server_quarter_log(%{
           year: new_date.year,
           quarter: new_quarter,
@@ -122,7 +124,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerQuarterTask do
   end
 
   @spec quarter_so_far() :: map()
-  def quarter_so_far() do
+  def quarter_so_far do
     now = Timex.now()
 
     user_activity_logs =

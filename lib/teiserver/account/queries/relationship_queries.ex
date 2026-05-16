@@ -1,7 +1,8 @@
 defmodule Teiserver.Account.RelationshipQueries do
   @moduledoc false
-  use TeiserverWeb, :queries
+
   alias Teiserver.Account.Relationship
+  use TeiserverWeb, :queries
 
   @spec query_relationships(list) :: Ecto.Query.t()
   def query_relationships(args) do
@@ -27,8 +28,8 @@ defmodule Teiserver.Account.RelationshipQueries do
   end
 
   @spec _where(Ecto.Query.t(), atom(), any()) :: Ecto.Query.t()
-  defp _where(query, _, ""), do: query
-  defp _where(query, _, nil), do: query
+  defp _where(query, _key, ""), do: query
+  defp _where(query, _key, nil), do: query
 
   defp _where(query, :from_user_id, from_id) do
     from relationships in query,

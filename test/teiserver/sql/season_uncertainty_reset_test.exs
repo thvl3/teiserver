@@ -1,5 +1,8 @@
 defmodule Teiserver.Sql.SeasonUncertaintyResetTest do
   @moduledoc false
+
+  alias Ecto.Adapters.SQL
+
   use Teiserver.DataCase
 
   test "it can calculate seasonal uncertainty reset target" do
@@ -65,7 +68,7 @@ defmodule Teiserver.Sql.SeasonUncertaintyResetTest do
     query = "SELECT calculate_season_uncertainty($1, $2, $3);"
 
     results =
-      Ecto.Adapters.SQL.query!(Repo, query, [current_uncertainty, last_updated, min_uncertainty])
+      SQL.query!(Repo, query, [current_uncertainty, last_updated, min_uncertainty])
 
     [new_uncertainty] =
       results.rows

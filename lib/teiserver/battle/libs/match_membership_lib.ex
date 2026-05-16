@@ -1,10 +1,11 @@
 defmodule Teiserver.Battle.MatchMembershipLib do
-  use TeiserverWeb, :library
-
+  @moduledoc false
   alias Teiserver.Battle.MatchMembership
 
-  def colours(), do: :primary2
-  def icon(), do: "fa-solid fa-users"
+  use TeiserverWeb, :library
+
+  def colours, do: :primary2
+  def icon, do: "fa-solid fa-users"
 
   @spec get_match_memberships() :: Ecto.Query.t()
   def get_match_memberships do
@@ -21,8 +22,8 @@ defmodule Teiserver.Battle.MatchMembershipLib do
     end)
   end
 
-  def _search(query, _, ""), do: query
-  def _search(query, _, nil), do: query
+  def _search(query, _key, ""), do: query
+  def _search(query, _key, nil), do: query
 
   def _search(query, :user_id, user_id) do
     from match_memberships in query,
@@ -53,21 +54,6 @@ defmodule Teiserver.Battle.MatchMembershipLib do
   def preload(query, nil), do: query
 
   def preload(query, _preloads) do
-    # query = if :super_match_membership in preloads, do: _preload_super_match_membership(query), else: query
-    # query = if :memberships in preloads, do: _preload_memberships(query), else: query
-
     query
   end
-
-  # def _preload_super_match_membership(query) do
-  #   from match_memberships in query,
-  #     left_join: super_match_memberships in assoc(match_memberships, :super_match_membership),
-  #     preload: [super_match_membership: super_match_memberships]
-  # end
-
-  # def _preload_memberships(query) do
-  #   from match_memberships in query,
-  #     left_join: memberships in assoc(match_memberships, :memberships),
-  #     preload: [memberships: memberships]
-  # end
 end

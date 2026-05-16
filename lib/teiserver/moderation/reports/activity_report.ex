@@ -1,13 +1,15 @@
 defmodule Teiserver.Moderation.ActivityReport do
+  @moduledoc false
   alias Teiserver.Helper.DatePresets
-  alias Teiserver.Moderation
   alias Teiserver.Helper.TimexHelper
+  alias Teiserver.Moderation
+  alias Teiserver.Moderation.BanLib
 
   @spec icon() :: String.t()
-  def icon(), do: Teiserver.Moderation.BanLib.icon()
+  def icon, do: BanLib.icon()
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Overwatch"
+  def permissions, do: "Overwatch"
 
   @spec run(Plug.Conn.t(), map()) :: map()
   def run(_conn, params) do
@@ -42,7 +44,7 @@ defmodule Teiserver.Moderation.ActivityReport do
     report_data = {
       date_strs,
       [
-        ["Total reports" | build_line(dates, reports, fn _ -> true end)],
+        ["Total reports" | build_line(dates, reports, fn _report -> true end)],
         ["Actioned reports" | build_line(dates, reports, fn r -> r.result_id != nil end)]
       ]
     }

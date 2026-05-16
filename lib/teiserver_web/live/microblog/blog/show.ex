@@ -1,11 +1,15 @@
 defmodule TeiserverWeb.Microblog.BlogLive.Show do
   @moduledoc false
-  use TeiserverWeb, :live_view
-  alias Teiserver.{Microblog, Logging, Communication}
-  import TeiserverWeb.MicroblogComponents
-  alias Phoenix.PubSub
 
-  @impl true
+  alias Phoenix.PubSub
+  alias Teiserver.Communication
+  alias Teiserver.Logging
+  alias Teiserver.Microblog
+  alias Teiserver.Microblog.PostLib
+  use TeiserverWeb, :live_view
+  import TeiserverWeb.MicroblogComponents
+
+  @impl Phoenix.LiveView
   def mount(%{"post_id" => post_id_str}, _session, socket) when is_connected?(socket) do
     :ok = PubSub.subscribe(Teiserver.PubSub, "microblog_posts")
     post = Microblog.get_post!(post_id_str, preload: [:poster, :tags])
@@ -30,7 +34,7 @@ defmodule TeiserverWeb.Microblog.BlogLive.Show do
     |> ok()
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_info(%{channel: "microblog_posts", event: :post_created}, socket) do
     {:noreply, socket}
   end
@@ -71,8 +75,8 @@ defmodule TeiserverWeb.Microblog.BlogLive.Show do
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_event("delete-post", _, %{assigns: %{post: post} = assigns} = socket) do
+  @impl Phoenix.LiveView
+  def handle_event("delete-post", _params, %{assigns: %{post: post} = assigns} = socket) do
     if assigns.current_user.id == post.poster_id || allow?(assigns.current_user, "Moderator") do
       Microblog.delete_post(post)
 
@@ -93,7 +97,7 @@ defmodule TeiserverWeb.Microblog.BlogLive.Show do
     end
   end
 
-  def handle_event("poll-choice", _, %{assigns: %{current_user: nil}} = socket) do
+  def handle_event("poll-choice", _params, %{assigns: %{current_user: nil}} = socket) do
     socket
     |> noreply()
   end
@@ -116,7 +120,7 @@ defmodule TeiserverWeb.Microblog.BlogLive.Show do
         response
       end
 
-    Teiserver.Microblog.PostLib.update_post_response_cache(assigns.post)
+    PostLib.update_post_response_cache(assigns.post)
 
     socket
     |> assign(:response, response)

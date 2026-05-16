@@ -1,28 +1,30 @@
 defmodule Teiserver.Account.RelationshipLib do
   @moduledoc false
-  alias Teiserver.{Account, Config}
-  alias Teiserver.Account.AuthLib
-  alias Teiserver.Data.Types, as: T
+  alias Ecto.Adapters.SQL
   alias Phoenix.PubSub
+  alias Teiserver.Account
+  alias Teiserver.Account.AuthLib
+  alias Teiserver.Config
+  alias Teiserver.Data.Types, as: T
   alias Teiserver.Repo
 
   @spec colour :: atom
-  def colour(), do: :success
+  def colour, do: :success
 
   @spec icon :: String.t()
-  def icon(), do: "fa-solid fa-users"
+  def icon, do: "fa-solid fa-users"
 
   @spec icon_follow :: String.t()
-  def icon_follow(), do: "fa-heart"
+  def icon_follow, do: "fa-heart"
 
   @spec icon_ignore :: String.t()
-  def icon_ignore(), do: "fa-microphone-slash"
+  def icon_ignore, do: "fa-microphone-slash"
 
   @spec icon_avoid :: String.t()
-  def icon_avoid(), do: "fa-ban"
+  def icon_avoid, do: "fa-ban"
 
   @spec icon_block :: String.t()
-  def icon_block(), do: "fa-hand"
+  def icon_block, do: "fa-hand"
 
   @spec verb_of_state(String.t() | map) :: String.t()
   def verb_of_state("follow"), do: "following"
@@ -311,23 +313,23 @@ defmodule Teiserver.Account.RelationshipLib do
 
   @spec does_a_follow_b?(T.userid(), T.userid()) :: boolean
   def does_a_follow_b?(u1, u2) do
-    Enum.member?(list_userids_followed_by_userid(u1), u2)
+    u1 |> list_userids_followed_by_userid() |> Enum.member?(u2)
   end
 
   @spec does_a_ignore_b?(T.userid(), T.userid()) :: boolean
   def does_a_ignore_b?(u1, u2) do
-    Enum.member?(list_userids_ignored_by_userid(u1), u2)
+    u1 |> list_userids_ignored_by_userid() |> Enum.member?(u2)
   end
 
   @spec does_a_avoid_b?(T.userid(), T.userid()) :: boolean
   def does_a_avoid_b?(u1, u2) do
-    Enum.member?(list_userids_avoided_by_userid(u1), u2) or
+    u1 |> list_userids_avoided_by_userid() |> Enum.member?(u2) or
       does_a_block_b?(u1, u2)
   end
 
   @spec does_a_block_b?(T.userid(), T.userid()) :: boolean
   def does_a_block_b?(u1, u2) do
-    Enum.member?(list_userids_blocked_by_userid(u1), u2)
+    u1 |> list_userids_blocked_by_userid() |> Enum.member?(u2)
   end
 
   @spec profile_view_permissions(
@@ -407,7 +409,7 @@ defmodule Teiserver.Account.RelationshipLib do
     limit $3
     """
 
-    results = Ecto.Adapters.SQL.query!(Repo, query, [player_ids, player_ids, limit, player_limit])
+    results = SQL.query!(Repo, query, [player_ids, player_ids, limit, player_limit])
 
     results.rows
   end
@@ -432,7 +434,7 @@ defmodule Teiserver.Account.RelationshipLib do
     # Not able to use mimimum_time_hours as parameter so have to add into the sql string
 
     results =
-      Ecto.Adapters.SQL.query!(Repo, query, [
+      SQL.query!(Repo, query, [
         player_ids,
         player_ids,
         limit,
@@ -455,7 +457,7 @@ defmodule Teiserver.Account.RelationshipLib do
     """
 
     results =
-      Ecto.Adapters.SQL.query!(Repo, query, [
+      SQL.query!(Repo, query, [
         user_id,
         days_not_logged_in
       ])
@@ -477,7 +479,7 @@ defmodule Teiserver.Account.RelationshipLib do
       """
 
     result =
-      Ecto.Adapters.SQL.query!(Repo, query, [
+      SQL.query!(Repo, query, [
         user_id,
         days_not_logged_in
       ])

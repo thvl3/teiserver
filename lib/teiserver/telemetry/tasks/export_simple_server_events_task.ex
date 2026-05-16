@@ -1,8 +1,8 @@
 defmodule Teiserver.Telemetry.ExportSimpleServerEventsTask do
   @moduledoc false
-  alias Teiserver.Telemetry.SimpleClientEvent
-  alias Teiserver.Helper.{DatePresets}
+  alias Teiserver.Helper.DatePresets
   alias Teiserver.Repo
+  alias Teiserver.Telemetry.SimpleClientEvent
   import Ecto.Query, warn: false
   import Teiserver.Helper.QueryHelpers
 
@@ -19,7 +19,7 @@ defmodule Teiserver.Telemetry.ExportSimpleServerEventsTask do
     |> Enum.to_list()
   end
 
-  def perform(_) do
+  def perform(_args) do
     %{}
   end
 

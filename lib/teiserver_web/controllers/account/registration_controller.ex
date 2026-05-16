@@ -1,11 +1,13 @@
 defmodule TeiserverWeb.Account.RegistrationController do
-  use TeiserverWeb, :controller
+  alias Ecto.Changeset
   alias Teiserver.Account
+  alias Teiserver.Account.User
+  use TeiserverWeb, :controller
 
   plug :registration_enabled?
 
   def new(conn, _params) do
-    changeset = Account.change_user(%Account.User{})
+    changeset = Account.change_user(%User{})
 
     conn
     |> assign(:changeset, changeset)
@@ -14,14 +16,14 @@ defmodule TeiserverWeb.Account.RegistrationController do
   end
 
   def create(conn, params) do
-    case Account.register_user(Map.get(params, "user", %{}), :plain_password) do
+    case params |> Map.get("user", %{}) |> Account.register_user(:plain_password) do
       {:ok, _user} ->
         conn
         |> put_flash(:info, "Account created")
         |> redirect(to: ~p"/login")
 
       {:error, changeset} ->
-        changeset = Ecto.Changeset.delete_change(changeset, :password)
+        changeset = Changeset.delete_change(changeset, :password)
 
         conn
         |> assign(:changeset, changeset)

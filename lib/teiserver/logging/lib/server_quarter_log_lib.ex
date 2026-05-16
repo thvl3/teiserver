@@ -1,16 +1,17 @@
 defmodule Teiserver.Logging.ServerQuarterLogLib do
-  use TeiserverWeb, :library
-
+  @moduledoc false
   alias Teiserver.Logging.ServerQuarterLog
 
+  use TeiserverWeb, :library
+
   @spec colours :: atom
-  def colours(), do: :warning2
+  def colours, do: :warning2
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-bar-chart"
+  def icon, do: "fa-solid fa-bar-chart"
 
   @spec get_server_quarter_logs :: Ecto.Query.t()
-  def get_server_quarter_logs() do
+  def get_server_quarter_logs do
     from(logs in ServerQuarterLog)
   end
 
@@ -25,8 +26,8 @@ defmodule Teiserver.Logging.ServerQuarterLogLib do
   end
 
   @spec _search(Ecto.Query.t(), atom, any) :: Ecto.Query.t()
-  def _search(query, _, ""), do: query
-  def _search(query, _, nil), do: query
+  def _search(query, _key, ""), do: query
+  def _search(query, _key, nil), do: query
 
   def _search(query, :date, {year, quarter}) do
     from logs in query,

@@ -8,7 +8,7 @@ defmodule TeiserverWeb.PaginationComponents do
   Renders a pagination component with page numbers, navigation, and search parameter preservation.
 
   ## Examples
-      
+
       # Basic pagination
       <.pagination
         page={@page}
@@ -16,7 +16,7 @@ defmodule TeiserverWeb.PaginationComponents do
         base_url="/admin/users"
         class="mt-3"
       />
-      
+
       # Full pagination with search parameter preservation (Controller)
       <.pagination
         page={@page}
@@ -30,7 +30,7 @@ defmodule TeiserverWeb.PaginationComponents do
         show_go_to={@total_pages > 5}
         class="mt-3"
       />
-      
+
       # Full pagination with search parameter preservation (LiveView)
       <.pagination
         page={@page}
@@ -44,9 +44,9 @@ defmodule TeiserverWeb.PaginationComponents do
         show_go_to={@total_pages > 5}
         class="mt-3"
       />
-      
+
   ## Options
-      
+
   * `:page` - Current page number (0-based)
   * `:total_pages` - Total number of pages (required for page number display)
   * `:base_url` - Base URL for pagination links
@@ -76,7 +76,7 @@ defmodule TeiserverWeb.PaginationComponents do
       current_params={@conn.params}
       include_params={["search", "limit", "name", "order"]}
 
-  ### LiveViews  
+  ### LiveViews
   Use `current_params={@filters}` to preserve LiveView filter state:
 
       current_params={@filters}
@@ -346,10 +346,10 @@ defmodule TeiserverWeb.PaginationComponents do
 
       # Build URL with no overrides or exclusions
       build_pagination_url("/admin/users", params, ["limit", "kind"])
-      
+
       # Build URL for LiveView push_patch (preserving all search parameters)
-      build_pagination_url("/moderation/overwatch", filters, 
-        ["actioned-filter", "closed-filter", "kind-filter", "timeframe-filter", "target_id", "limit"], 
+      build_pagination_url("/moderation/overwatch", filters,
+        ["actioned-filter", "closed-filter", "kind-filter", "timeframe-filter", "target_id", "limit"],
         %{"page" => "1"})
 
   ## Behavior
@@ -360,7 +360,13 @@ defmodule TeiserverWeb.PaginationComponents do
   * **Empty Values**: Automatically filters out empty strings and nil values
   * **URL Encoding**: Properly encodes parameter values for safe URLs
   """
-  def build_pagination_url(base_url, params, include_params, overrides \\ %{}, exclusions \\ []) do
+  def build_pagination_url(
+        base_url,
+        params,
+        include_params,
+        overrides \\ %{},
+        exclusions \\ []
+      ) do
     # Use centralized parameter preparation with exclusions
     search_params = prepare_params(params, include_params, overrides, exclusions)
 
@@ -375,9 +381,7 @@ defmodule TeiserverWeb.PaginationComponents do
   # Helper function for building query strings consistently
   defp build_query_string(params) do
     params
-    # credo:disable-for-lines:2 Credo.Check.Refactor.MapJoin
-    |> Enum.map(fn {k, v} -> "#{k}=#{URI.encode_www_form(to_string(v))}" end)
-    |> Enum.join("&")
+    |> Enum.map_join("&", fn {k, v} -> "#{k}=#{URI.encode_www_form(to_string(v))}" end)
   end
 
   # Centralized parameter preparation with overrides and exclusions
@@ -395,7 +399,7 @@ defmodule TeiserverWeb.PaginationComponents do
 
   # Helper function to build the page range for pagination
   # Returns a list like [0, 1, :ellipsis, 5, 6, 7] for smart pagination
-  defp build_page_range(_, 0, _), do: [0]
+  defp build_page_range(_current_page, 0, _max_pages), do: [0]
 
   defp build_page_range(_current_page, total_pages, max_pages) when total_pages <= max_pages do
     # If total pages is small, show all pages

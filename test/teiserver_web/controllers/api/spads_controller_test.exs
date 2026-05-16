@@ -1,11 +1,13 @@
 defmodule TeiserverWeb.API.SpadsControllerTest do
-  use TeiserverWeb.ConnCase, async: false
   alias Teiserver.Account
-  alias Teiserver.Game.MatchRatingLib
+  alias Teiserver.Account.Auth
   alias Teiserver.Client
+  alias Teiserver.Game.MatchRatingLib
+  alias Teiserver.TeiserverTestLib
   alias TeiserverWeb.API.SpadsController
+  use TeiserverWeb.ConnCase, async: false
 
-  import Teiserver.TeiserverTestLib,
+  import TeiserverTestLib,
     only: [
       new_user: 0,
       make_lobby: 1
@@ -33,10 +35,10 @@ defmodule TeiserverWeb.API.SpadsControllerTest do
 
     test "existing user", %{conn: conn} do
       user = new_bot_user()
-      Teiserver.TeiserverTestLib.clear_cache(:teiserver_game_rating_types)
+      TeiserverTestLib.clear_cache(:teiserver_game_rating_types)
       rating_type_id = MatchRatingLib.rating_type_name_lookup()["Large Team"]
 
-      {:ok, _} =
+      {:ok, _rating} =
         Account.create_rating(%{
           user_id: user.id,
           rating_type_id: rating_type_id,
@@ -126,7 +128,7 @@ defmodule TeiserverWeb.API.SpadsControllerTest do
       assert data == %{}
     end
 
-    test "can detect empty balance result" do
+    test "can derive team dimensions from balance result" do
       # This is the default balance result when no players
       # Defined inside balance_lib.ex
       balance_result = %{
@@ -143,7 +145,19 @@ defmodule TeiserverWeb.API.SpadsControllerTest do
         has_parties?: false
       }
 
-      assert SpadsController.is_non_empty_balance_result?(balance_result) == false
+      assert SpadsController.get_balance_team_dimensions(balance_result) == :error
+      assert SpadsController.get_balance_team_dimensions(nil) == :error
+      assert SpadsController.get_balance_team_dimensions(%{}) == :error
+      assert SpadsController.get_balance_team_dimensions(%{team_sizes: []}) == :error
+      assert SpadsController.get_balance_team_dimensions(%{team_sizes: %{}}) == :error
+      assert SpadsController.get_balance_team_dimensions(%{team_sizes: %{1 => 0}}) == :error
+      assert SpadsController.get_balance_team_dimensions(%{team_sizes: %{1 => nil}}) == :error
+
+      assert SpadsController.get_balance_team_dimensions(%{team_sizes: %{1 => 4}}) ==
+               {:ok, {1, 4}}
+
+      assert SpadsController.get_balance_team_dimensions(%{team_sizes: %{1 => 8, 2 => 6}}) ==
+               {:ok, {2, 8}}
     end
   end
 
@@ -154,9 +168,10 @@ defmodule TeiserverWeb.API.SpadsControllerTest do
     end
   end
 
-  def new_bot_user() do
-    new_user()
-    |> Teiserver.CacheUser.add_roles(["Bot"])
+  def new_bot_user do
+    user = new_user()
+    Auth.add_roles(user.id, ["Bot"])
+    user
   end
 
   def put_authorization_header(conn, user) do

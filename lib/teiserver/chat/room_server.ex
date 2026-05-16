@@ -1,10 +1,13 @@
 defmodule Teiserver.Chat.RoomServer do
+  @moduledoc false
+  alias Phoenix.PubSub
+  alias Teiserver.Chat
+  alias Teiserver.Chat.RoomRegistry
+  alias Teiserver.Data.Types, as: T
+  alias Teiserver.Helpers.MonitorCollection, as: MC
+
   use GenServer, restart: :temporary
 
-  alias Teiserver.Data.Types, as: T
-  alias Teiserver.Chat
-  alias Teiserver.Helpers.MonitorCollection, as: MC
-  alias Phoenix.PubSub
   require Logger
 
   @type room :: %{
@@ -13,7 +16,6 @@ defmodule Teiserver.Chat.RoomServer do
           author_id: T.userid(),
           topic: String.t(),
           password: String.t(),
-          clan_id: T.clan_id(),
           monitors: MC.t()
         }
 
@@ -23,59 +25,59 @@ defmodule Teiserver.Chat.RoomServer do
 
   @spec get_room(String.t()) :: room() | nil
   def get_room(name) do
-    GenServer.call(via_tuple(name), :get_room)
+    name |> via_tuple() |> GenServer.call(:get_room)
   catch
-    :exit, {:noproc, _} -> nil
+    :exit, {:noproc, _details} -> nil
   end
 
   @spec join_room(String.t(), T.userid(), pid() | nil) ::
           {:ok, :joined | :already_present} | {:error, :invalid_room}
   def join_room(name, user_id, pid \\ self()) do
-    GenServer.call(via_tuple(name), {:join_room, user_id, pid})
+    name |> via_tuple() |> GenServer.call({:join_room, user_id, pid})
   catch
-    :exit, {:noproc, _} -> {:error, :invalid_room}
+    :exit, {:noproc, _details} -> {:error, :invalid_room}
   end
 
   @spec leave_room(String.t(), T.userid()) :: :ok
   def leave_room(name, user_id) do
-    GenServer.call(via_tuple(name), {:leave_room, user_id})
+    name |> via_tuple() |> GenServer.call({:leave_room, user_id})
   catch
-    :exit, {:noproc, _} -> :ok
+    :exit, {:noproc, _details} -> :ok
   end
 
   @spec can_join_room?(String.t(), T.user()) :: true | :invalid_room | {false, String.t()}
   def can_join_room?(name, user) do
-    GenServer.call(via_tuple(name), {:can_join_room?, user})
+    name |> via_tuple() |> GenServer.call({:can_join_room?, user})
   catch
-    :exit, {:noproc, _} -> :invalid_room
+    :exit, {:noproc, _details} -> :invalid_room
   end
 
   @spec stop_room(String.t()) :: :ok
   def stop_room(name) do
-    GenServer.call(via_tuple(name), :stop)
+    name |> via_tuple() |> GenServer.call(:stop)
   catch
-    :exit, {:noproc, _} -> :ok
+    :exit, {:noproc, _details} -> :ok
   end
 
   @spec send_message(String.t(), T.userid(), String.t()) :: :ok
   def send_message(name, user_id, message) do
-    GenServer.call(via_tuple(name), {:send_message, user_id, message})
+    name |> via_tuple() |> GenServer.call({:send_message, user_id, message})
   catch
-    :exit, {:noproc, _} -> :ok
+    :exit, {:noproc, _details} -> :ok
   end
 
   @spec send_message_ex(String.t(), T.userid(), String.t()) :: :ok
   def send_message_ex(name, user_id, message) do
-    GenServer.call(via_tuple(name), {:send_message_ex, user_id, message})
+    name |> via_tuple() |> GenServer.call({:send_message_ex, user_id, message})
   catch
-    :exit, {:noproc, _} -> :ok
+    :exit, {:noproc, _details} -> :ok
   end
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, args, name: via_tuple(args.name))
   end
 
-  @impl true
+  @impl GenServer
   @spec init(term()) :: {:ok, state()}
   def init(args) do
     Logger.metadata(actor_type: :chat_room, actor_id: args.name)
@@ -87,7 +89,6 @@ defmodule Teiserver.Chat.RoomServer do
       author_id: args.author_id,
       topic: args.topic,
       password: args.password,
-      clan_id: args.clan_id,
       monitors: MC.new()
     }
 
@@ -96,7 +97,7 @@ defmodule Teiserver.Chat.RoomServer do
     {:ok, state}
   end
 
-  @impl true
+  @impl GenServer
   def handle_call(:get_room, _from, state) do
     {:reply, state, state}
   end
@@ -135,13 +136,11 @@ defmodule Teiserver.Chat.RoomServer do
     end
   end
 
-  def handle_call({:can_join_room?, user}, _from, state) do
-    result =
-      cond do
-        state.clan_id == nil -> true
-        state.clan_id == user.clan_id -> true
-        true -> {false, "Clan room"}
-      end
+  def handle_call({:can_join_room?, _user}, _from, state) do
+    # Previously this checked for clans, we will leave it in place for now
+    # as the ability to limit membership to rooms is likely useful in the
+    # future
+    result = true
 
     {:reply, result, state}
   end
@@ -166,7 +165,7 @@ defmodule Teiserver.Chat.RoomServer do
 
           case msg do
             {:ok, msg_obj} -> msg_obj
-            _ -> nil
+            _error -> nil
           end
         end
 
@@ -216,7 +215,7 @@ defmodule Teiserver.Chat.RoomServer do
     {:reply, :ok, state}
   end
 
-  @impl true
+  @impl GenServer
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
     val = MC.get_val(state.monitors, ref)
     state = Map.update!(state, :monitors, &MC.demonitor_by_val(&1, val))
@@ -233,10 +232,10 @@ defmodule Teiserver.Chat.RoomServer do
   end
 
   defp update_member_count(state) do
-    Chat.RoomRegistry.update_room(state.name, Enum.count(state.members))
+    RoomRegistry.update_room(state.name, Enum.count(state.members))
   end
 
   def via_tuple(name) do
-    Chat.RoomRegistry.via_tuple(name)
+    RoomRegistry.via_tuple(name)
   end
 end

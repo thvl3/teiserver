@@ -1,22 +1,21 @@
 defmodule Teiserver.Logging.PageViewLogLib do
   @moduledoc false
-  use TeiserverWeb, :library
-
-  @spec colours() :: atom
-  def colours(), do: :info
-
-  @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-chart-line"
 
   alias Teiserver.Logging.PageViewLog
-
+  use TeiserverWeb, :library
   import Plug.Conn, only: [assign: 3]
+
+  @spec colours() :: atom
+  def colours, do: :info
+
+  @spec icon() :: String.t()
+  def icon, do: "fa-solid fa-chart-line"
 
   def do_not_log(conn) do
     assign(conn, :do_not_log, true)
   end
 
-  def get_page_view_logs() do
+  def get_page_view_logs do
     from(logs in PageViewLog)
   end
 
@@ -30,8 +29,8 @@ defmodule Teiserver.Logging.PageViewLogLib do
     end)
   end
 
-  def _search(query, _, nil), do: query
-  def _search(query, _, ""), do: query
+  def _search(query, _key, nil), do: query
+  def _search(query, _key, ""), do: query
 
   def _search(query, :id, id) do
     from logs in query,
@@ -81,7 +80,7 @@ defmodule Teiserver.Logging.PageViewLogLib do
       where: logs.inserted_at < ^naive_date
   end
 
-  def _search(query, :no_root, _) do
+  def _search(query, :no_root, _value) do
     from logs in query,
       left_join: users in assoc(logs, :user),
       where: users.name not in ["root", "root2"]

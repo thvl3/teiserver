@@ -1,22 +1,22 @@
 defmodule TeiserverWeb.Moderation.BanControllerTest do
   @moduledoc false
-  use TeiserverWeb.ConnCase
 
+  alias Teiserver.Helpers.GeneralTestLib
   alias Teiserver.Moderation
   alias Teiserver.Moderation.ModerationTestLib
+  alias Teiserver.TeiserverTestLib
 
-  alias Central.Helpers.GeneralTestLib
+  use TeiserverWeb.ConnCase
 
   setup do
-    GeneralTestLib.conn_setup(["Reviewer", "Moderator"])
-    |> Teiserver.TeiserverTestLib.conn_setup()
+    GeneralTestLib.conn_setup(["Reviewer", "Moderator", "Overwatch"])
+    |> TeiserverTestLib.conn_setup()
   end
 
   @create_attrs %{"key_values" => ["key1", "key2"], "enabled" => true, "reason" => "reason"}
   @invalid_attrs %{"key_values" => []}
 
   describe "index" do
-    @tag :needs_attention
     test "lists all bans", %{conn: conn} do
       conn = get(conn, Routes.moderation_ban_path(conn, :index))
       assert html_response(conn, 200) =~ "Listing Bans"

@@ -1,23 +1,34 @@
 defmodule Teiserver.Tachyon.System do
   @moduledoc false
 
+  alias Teiserver.Autohost
+  alias Teiserver.KvStore
+  alias Teiserver.Matchmaking
+  alias Teiserver.Party
+  alias Teiserver.Player
+  alias Teiserver.Tachyon.Config
+  alias Teiserver.Tachyon.Schema
+  alias Teiserver.TachyonBattle
+  alias Teiserver.TachyonLobby
+
   use Supervisor
+
   require Logger
 
   def start_link(init_arg) do
     Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
   end
 
-  @impl true
-  def init(_) do
+  @impl Supervisor
+  def init(_arg) do
     children = [
-      Teiserver.Tachyon.Schema.cache_spec(),
-      Teiserver.Autohost.System,
-      Teiserver.TachyonBattle.System,
-      Teiserver.Matchmaking.System,
-      Teiserver.TachyonLobby.System,
-      Teiserver.Party.System,
-      Teiserver.Player.System
+      Schema.cache_spec(),
+      Autohost.System,
+      TachyonBattle.System,
+      Matchmaking.System,
+      TachyonLobby.System,
+      Party.System,
+      Player.System
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
@@ -26,7 +37,7 @@ defmodule Teiserver.Tachyon.System do
   @doc """
   restart the entire tachyon system
   """
-  def restart() do
+  def restart do
     :ok = Supervisor.terminate_child(Teiserver.Supervisor, __MODULE__)
     {:ok, _pid} = Supervisor.restart_child(Teiserver.Supervisor, __MODULE__)
   end
@@ -38,7 +49,7 @@ defmodule Teiserver.Tachyon.System do
   Then delete all these blobs (regardless of what happens during the restoration)
   """
   def restore_state(store_name, module, function) do
-    if Teiserver.Tachyon.Config.should_restore_state?() do
+    if Config.should_restore_state?() do
       do_restore_state(store_name, module, function)
     else
       Logger.debug("State restoration disabled")
@@ -46,7 +57,7 @@ defmodule Teiserver.Tachyon.System do
   end
 
   def do_restore_state(store_name, module, function) do
-    blobs = Teiserver.KvStore.scan(store_name)
+    blobs = KvStore.scan(store_name)
     Logger.info("Attempting to restore #{length(blobs)} from #{store_name}")
 
     try do
@@ -61,7 +72,7 @@ defmodule Teiserver.Tachyon.System do
       :ok
     after
       Enum.map(blobs, fn b -> {b.store, b.key} end)
-      |> Teiserver.KvStore.delete_many()
+      |> KvStore.delete_many()
     end
   end
 end

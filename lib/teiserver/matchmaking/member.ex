@@ -3,6 +3,10 @@ defmodule Teiserver.Matchmaking.Member do
   member of a queue. Holds of the information required to match members together.
   A member can be a party of players. Parties must not be broken.
   """
+  alias Teiserver.Battle.BalanceLib
+  alias Teiserver.Data.Types, as: T
+  alias Teiserver.Game
+
   @enforce_keys [:id, :player_ids, :joined_at]
   defstruct [
     :id,
@@ -11,9 +15,6 @@ defmodule Teiserver.Matchmaking.Member do
     :rating,
     avoid: []
   ]
-
-  alias Teiserver.Data.Types, as: T
-  alias Teiserver.Battle.BalanceLib
 
   @typedoc """
   Aggregated player ratings for this member.
@@ -46,7 +47,7 @@ defmodule Teiserver.Matchmaking.Member do
       id: UUID.uuid4(),
       player_ids: player_ids,
       rating: get_member_rating(player_ids, game_type),
-      # credo:disable-for-next-line Credo.Check.Design.TagTODO
+
       # TODO tachyon_mvp: fetch the list of player id avoided by this player
       avoid: [],
       joined_at: DateTime.utc_now()
@@ -58,7 +59,7 @@ defmodule Teiserver.Matchmaking.Member do
     default = BalanceLib.default_rating()
     default = %{skill: default.rating_value, uncertainty: default.uncertainty}
 
-    case Enum.find(Teiserver.Game.get_ratings_for_users(player_ids), &(&1.name == game_type)) do
+    case player_ids |> Game.get_ratings_for_users() |> Enum.find(&(&1.name == game_type)) do
       nil ->
         default
 

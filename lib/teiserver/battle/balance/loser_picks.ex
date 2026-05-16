@@ -16,8 +16,8 @@ defmodule Teiserver.Battle.Balance.LoserPicks do
   """
 
   # Alias the types
-  alias Teiserver.Battle.BalanceLib
   alias Teiserver.Battle.Balance.BalanceTypes, as: BT
+  alias Teiserver.Battle.BalanceLib
   import Teiserver.Helper.NumberHelper, only: [round: 2]
 
   @splitter "------------------------------------------------------"
@@ -41,7 +41,8 @@ defmodule Teiserver.Battle.Balance.LoserPicks do
   """
   @spec perform([BT.expanded_group_or_pair()], non_neg_integer(), list()) :: BT.algorithm_result()
   def perform(raw_groups, team_count, opts) do
-    # This module doesn't use ranks and they need to be dropped from raw_groups to make existing tests pass
+    # This module doesn't use ranks and they need to be
+    # dropped from raw_groups to make existing tests pass
     raw_groups = Enum.map(raw_groups, fn x -> Map.drop(x, [:ranks]) end)
 
     teams =
@@ -195,15 +196,13 @@ defmodule Teiserver.Battle.Balance.LoserPicks do
 
   @spec get_group_names(BT.expanded_group()) :: String.t()
   defp get_group_names(group) do
-    cond do
-      Map.has_key?(group, :names) ->
-        group.names
-        |> Enum.map_join(", ", fn x -> x end)
-
+    if Map.has_key?(group, :names) do
+      group.names
+      |> Enum.map_join(", ", fn x -> x end)
+    else
       # It shouldn't go here unless we made a mistake elsewhere
-      true ->
-        group.members
-        |> Enum.map_join(", ", fn x -> "#{x}" end)
+      group.members
+      |> Enum.map_join(", ", fn x -> "#{x}" end)
     end
   end
 end

@@ -1,7 +1,9 @@
 defmodule Teiserver.Data.UserTest do
-  use Teiserver.ServerCase
-  alias Teiserver.{CacheUser, Account}
+  alias Teiserver.Account
+  alias Teiserver.Account.Auth
+  alias Teiserver.CacheUser
   alias Teiserver.TeiserverTestLib
+  use Teiserver.ServerCase
 
   test "adding two bots with the same email" do
     # Spring protocol runs on usernames while this runs on emails as the unique
@@ -9,7 +11,7 @@ defmodule Teiserver.Data.UserTest do
 
     # This is our base user that will create other users
     base_user = TeiserverTestLib.new_user("twobot_test_base1")
-    base_user = CacheUser.update_user(%{base_user | roles: ["Server", "Moderator"]})
+    {:ok, base_user} = Auth.add_roles(base_user.id, ["Server", "Moderator"])
 
     user1 = CacheUser.register_bot("twobot_test_base1[01]", base_user.id)
     user2 = CacheUser.register_bot("twobot_test_base1[02]", base_user.id)
@@ -39,7 +41,7 @@ defmodule Teiserver.Data.UserTest do
     result =
       CacheUser.register_user_with_md5("name", "name@email.e", "1B2M2Y8AsgTpgAmY7PhCfg==", "ip")
 
-    assert {:error, _} = result
+    assert {:error, _reason} = result
   end
 
   # We will now be calculating ranks based on

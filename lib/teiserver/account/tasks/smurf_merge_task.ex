@@ -1,10 +1,12 @@
 defmodule Teiserver.Account.SmurfMergeTask do
   @moduledoc false
-  alias Teiserver.{Account, Game}
+
+  alias Teiserver.Account
   alias Teiserver.Battle.BalanceLib
-  require Logger
   alias Teiserver.Data.Types, as: T
-  # alias Teiserver.Repo
+  alias Teiserver.Game
+  alias Teiserver.Game.MatchRatingLib
+  require Logger
 
   @spec perform(T.userid(), T.userid(), map()) :: :ok
   def perform(from_id, to_id, settings) do
@@ -20,7 +22,7 @@ defmodule Teiserver.Account.SmurfMergeTask do
   defp merge_ratings(_from_id, _to_id, "false"), do: :ok
 
   defp merge_ratings(from_id, to_id, "true") do
-    season = Teiserver.Game.MatchRatingLib.active_season()
+    season = MatchRatingLib.active_season()
 
     to_ratings =
       Account.list_ratings(search: [user_id: to_id, season: season])
@@ -103,7 +105,7 @@ defmodule Teiserver.Account.SmurfMergeTask do
     )
     |> Enum.each(fn %{id: ignorer_id} ->
       case Account.ignore_user(ignorer_id, to_id) do
-        {:ok, _} ->
+        {:ok, _relationship} ->
           :ok
 
         {:error, reason} ->

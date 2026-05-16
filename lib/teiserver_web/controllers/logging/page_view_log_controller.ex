@@ -1,8 +1,9 @@
 defmodule TeiserverWeb.Logging.PageViewLogController do
+  alias Teiserver.Helper.TimexHelper
+  alias Teiserver.Logging
+
   use TeiserverWeb, :controller
 
-  alias Teiserver.Logging
-  alias Teiserver.Helper.TimexHelper
   import Teiserver.Helper.StringHelper, only: [get_hash_id: 1]
 
   plug :add_breadcrumb, name: "Logging", url: "/logging"
@@ -14,6 +15,7 @@ defmodule TeiserverWeb.Logging.PageViewLogController do
   )
 
   plug Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Logging.PageViewLog,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}
@@ -82,7 +84,7 @@ defmodule TeiserverWeb.Logging.PageViewLogController do
 
     conn
     |> put_flash(:info, "Page view log deleted successfully.")
-    |> redirect(to: Routes.logging_page_view_log_path(conn, :index))
+    |> redirect(to: ~p"/logging/page_views")
   end
 
   @spec form_params(map()) :: map()

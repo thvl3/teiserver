@@ -1,7 +1,8 @@
 defmodule Teiserver.OAuth.CodeQueries do
-  use TeiserverWeb, :queries
+  @moduledoc false
   alias Teiserver.OAuth.Application
   alias Teiserver.OAuth.Code
+  use TeiserverWeb, :queries
 
   @doc """
   Return the db object corresponding to the given code.
@@ -14,7 +15,7 @@ defmodule Teiserver.OAuth.CodeQueries do
     base_query() |> where_code(code) |> Repo.one()
   end
 
-  def base_query() do
+  def base_query do
     from code in Code, as: :code
   end
 

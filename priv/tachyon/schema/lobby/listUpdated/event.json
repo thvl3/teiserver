@@ -19,7 +19,7 @@
                 "lobbies": {
                     "type": "object",
                     "patternProperties": {
-                        "^(.*)$": {
+                        "^.*$": {
                             "anyOf": [
                                 {
                                     "type": "object",
@@ -31,6 +31,9 @@
                                         "mapName": { "type": "string" },
                                         "engineVersion": { "type": "string" },
                                         "gameVersion": { "type": "string" },
+                                        "areBossesEnabled": {
+                                            "type": "boolean"
+                                        },
                                         "currentBattle": {
                                             "anyOf": [
                                                 {

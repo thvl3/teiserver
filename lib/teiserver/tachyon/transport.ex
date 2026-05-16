@@ -5,10 +5,13 @@ defmodule Teiserver.Tachyon.Transport do
   It handle parsing and validating commands before delegating it to a handler
   """
 
-  @behaviour WebSock
-  require Logger
   alias Teiserver.Helpers.BurstyRateLimiter
-  alias Teiserver.Tachyon.{Schema, Handler}
+  alias Teiserver.Tachyon.Handler
+  alias Teiserver.Tachyon.Schema
+
+  require Logger
+
+  @behaviour WebSock
 
   @type connection_state() :: %{
           handler: term(),
@@ -17,7 +20,7 @@ defmodule Teiserver.Tachyon.Transport do
           pending_responses: Handler.pending_responses()
         }
 
-  @impl true
+  @impl WebSock
   def init(state) do
     # this is inside the process that maintain the connection
     schedule_ping()
@@ -48,11 +51,11 @@ defmodule Teiserver.Tachyon.Transport do
         Process.demonitor(req_id, [:flush])
         reply
 
-      {:DOWN, ^req_id, _, _, :noconnection} ->
+      {:DOWN, ^req_id, _type, _object, :noconnection} ->
         node = node(pid)
         exit({{:nodedown, node}, {__MODULE__, :call_client, [pid, cmd_id, payload, timeout]}})
 
-      {:DOWN, ^req_id, _, _, reason} ->
+      {:DOWN, ^req_id, _type, _object, reason} ->
         exit({reason, {__MODULE__, :call_client, [pid, cmd_id, payload, timeout]}})
     after
       timeout ->
@@ -81,7 +84,7 @@ defmodule Teiserver.Tachyon.Transport do
   end
 
   # dummy handle_in for now
-  @impl true
+  @impl WebSock
   def handle_in({"test_ping\n", opcode: :text}, state) do
     # this is handy during manual test to ensure the connection is still alive
     {:reply, :ok, {:text, "test_pong"}, state}
@@ -114,24 +117,29 @@ defmodule Teiserver.Tachyon.Transport do
     {:stop, :normal, 1003, state}
   end
 
-  @impl true
+  @impl WebSock
   def handle_info(:send_ping, state) do
     schedule_ping()
     {:push, {:ping, <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>}, state}
   end
 
   def handle_info(:force_disconnect, state) do
-    # credo:disable-for-next-line Credo.Check.Design.TagTODO
     # TODO: send a proper tachyon message to inform the client it is getting disconnected
     {:stop, :normal, state}
   end
 
   def handle_info({:timeout, message_id}, state) do
-    {_, pendings} = Map.pop(state.pending_responses, message_id)
+    {popped, pendings} = Map.pop(state.pending_responses, message_id)
 
-    {:stop, :timeout,
-     {1008, "Response to request with message id #{message_id} not received in time."},
-     %{state | pending_responses: pendings}}
+    if popped == nil do
+      # this can happen if the response is handled while the timeout message is already
+      # in the inbox (and so the timer cancellation is done too late)
+      {:ok, state}
+    else
+      {:stop, :timeout,
+       {1008, "Response to request with message id #{message_id} not received in time."},
+       %{state | pending_responses: pendings}}
+    end
   end
 
   def handle_info({:call_client, cmd_id, payload, req_id}, state) do
@@ -152,7 +160,7 @@ defmodule Teiserver.Tachyon.Transport do
           state =
             case BurstyRateLimiter.try_acquire(rl, n, :erlang.monotonic_time(:millisecond)) do
               {:ok, rl} -> %{state | rate_limiter: rl}
-              _ -> state
+              _other -> state
             end
 
           send(from, {:reply, r, result})
@@ -166,7 +174,7 @@ defmodule Teiserver.Tachyon.Transport do
     handle_result(state.handler.handle_info(msg, state.handler_state), state)
   end
 
-  @impl true
+  @impl WebSock
   def terminate(reason, state) do
     case reason do
       :normal ->
@@ -181,7 +189,7 @@ defmodule Teiserver.Tachyon.Transport do
       {:crash, :error, err} ->
         Logger.error("ws connection crashed: #{inspect(err)}")
 
-      _ ->
+      _other ->
         Logger.info(
           "Terminating ws connection #{inspect(self())} with reason #{inspect(reason)} and state #{inspect(state)}"
         )
@@ -229,7 +237,7 @@ defmodule Teiserver.Tachyon.Transport do
   def do_handle_command(command_id, "response", message_id, message, state) do
     case Map.pop(state.pending_responses, message_id) do
       # We got a response but nothing registered, which is invalid
-      {nil, _} ->
+      {nil, _pendings} ->
         {:stop, :normal,
          {1008, "Received response to message id #{message_id} but no request pending."}, state}
 
@@ -271,11 +279,11 @@ defmodule Teiserver.Tachyon.Transport do
 
     response_details =
       case result do
-        {:response, _} -> {:resp, :ok}
-        {:response, _, _} -> {:resp, :ok}
-        {:error_response, code, _} -> {:resp, code}
-        {:error_response, code, _, _} -> {:resp, code}
-        _ -> false
+        {:response, _state} -> {:resp, :ok}
+        {:response, _payload, _state} -> {:resp, :ok}
+        {:error_response, code, _state} -> {:resp, code}
+        {:error_response, code, _details, _state} -> {:resp, code}
+        _other -> false
       end
 
     case response_details do
@@ -285,7 +293,7 @@ defmodule Teiserver.Tachyon.Transport do
           code: code
         })
 
-      _ ->
+      _other ->
         nil
     end
 
@@ -316,10 +324,17 @@ defmodule Teiserver.Tachyon.Transport do
           WebSock.handle_result()
   defp handle_result(result, command_id, message_id, conn_state) do
     case result do
-      {:event, evs, _} when is_list(evs) -> Enum.map(evs, fn {cmd_id, _} -> cmd_id end)
-      {:event, cmd_id, _} -> [cmd_id]
-      {:event, cmd_id, _payload, _} -> [cmd_id]
-      _ -> []
+      {:event, evs, _state} when is_list(evs) ->
+        Enum.map(evs, fn {cmd_id, _payload} -> cmd_id end)
+
+      {:event, cmd_id, _state} ->
+        [cmd_id]
+
+      {:event, cmd_id, _payload, _state} ->
+        [cmd_id]
+
+      _other ->
+        []
     end
     |> Enum.each(fn cmd_id ->
       :telemetry.execute([:tachyon, :event], %{count: 1}, %{command_id: cmd_id})
@@ -408,7 +423,7 @@ defmodule Teiserver.Tachyon.Transport do
     BurstyRateLimiter.try_acquire(rl, cost, :erlang.monotonic_time(:millisecond))
   end
 
-  defp schedule_ping() do
+  defp schedule_ping do
     # we want a ping/pong every 10s and avoid thundering herd
     wait = 1_000 + :rand.uniform(8500)
     :timer.send_after(wait, :send_ping)

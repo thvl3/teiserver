@@ -1,8 +1,12 @@
 defmodule Teiserver.Telemetry.SimpleLobbyEventTest do
   @moduledoc false
-  use Teiserver.DataCase
-  alias Teiserver.{Battle, Telemetry}
+
+  alias Ecto.Adapters.SQL
+  alias ExULID.ULID
+  alias Teiserver.Battle
   alias Teiserver.TeiserverTestLib
+  alias Teiserver.Telemetry
+  use Teiserver.DataCase
 
   test "simple lobby events" do
     r = :rand.uniform(999_999_999)
@@ -11,7 +15,7 @@ defmodule Teiserver.Telemetry.SimpleLobbyEventTest do
 
     {:ok, match} =
       Battle.create_match(%{
-        uuid: ExULID.ULID.generate(),
+        uuid: ULID.generate(),
         map: "red desert",
         data: %{},
         tags: %{},
@@ -29,11 +33,11 @@ defmodule Teiserver.Telemetry.SimpleLobbyEventTest do
 
     # Start by removing all lobby events
     query = "DELETE FROM telemetry_simple_lobby_events;"
-    Ecto.Adapters.SQL.query(Repo, query, [])
+    SQL.query(Repo, query, [])
     assert Telemetry.list_simple_lobby_events() |> Enum.count() == 0
 
     # Log the event
-    {result, _} =
+    {result, _event} =
       Telemetry.log_simple_lobby_event(user.id, match.id, "lobby.simple_user_event-#{r}")
 
     assert result == :ok

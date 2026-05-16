@@ -3,14 +3,22 @@ defmodule Teiserver.Application do
   # for more information on OTP Applications
   @moduledoc false
 
-  use Application
   alias Phoenix.PubSub
+  alias Teiserver.Helper.ObanLogger
+  alias Teiserver.Plugins
+  alias Teiserver.Startup
+  alias TeiserverWeb.Endpoint
+  alias TeiserverWeb.Monitoring.Router, as: MonitoringRouter
+
+  use Plugins
+  use Application
+
   require Logger
 
   import Teiserver.Helpers.CacheHelper,
     only: [concache_sup: 1, concache_sup: 2, concache_perm_sup: 1]
 
-  @impl true
+  @impl Application
   def start(_type, _args) do
     LoggerBackends.add(LoggerBackends.Console)
     LoggerBackends.add({LoggerFileBackend, :error_log})
@@ -65,7 +73,6 @@ defmodule Teiserver.Application do
         # Global/singleton registries
         {Horde.Registry, [keys: :unique, members: :auto, name: Teiserver.ServerRegistry]},
         {Horde.Registry, [keys: :unique, members: :auto, name: Teiserver.ThrottleRegistry]},
-        {Horde.Registry, [keys: :unique, members: :auto, name: Teiserver.AccoladesRegistry]},
         {Horde.Registry, [keys: :unique, members: :auto, name: Teiserver.ConsulRegistry]},
         {Horde.Registry, [keys: :unique, members: :auto, name: Teiserver.BalancerRegistry]},
         {Horde.Registry, [keys: :unique, members: :auto, name: Teiserver.LobbyRegistry]},
@@ -73,15 +80,10 @@ defmodule Teiserver.Application do
         {Horde.Registry, [keys: :unique, members: :auto, name: Teiserver.PartyRegistry]},
         {Horde.Registry, [keys: :unique, members: :auto, name: Teiserver.QueueWaitRegistry]},
         {Horde.Registry, [keys: :unique, members: :auto, name: Teiserver.QueueMatchRegistry]},
-        {Horde.Registry, [keys: :unique, members: :auto, name: Teiserver.LobbyPolicyRegistry]},
 
         # These are for tracking the number of servers on the local node
         {Registry, keys: :duplicate, name: Teiserver.LocalPoolRegistry},
         {Registry, keys: :duplicate, name: Teiserver.LocalServerRegistry},
-
-        # Stores - Tables where changes are not propagated across the cluster
-        # Possible stores
-        Teiserver.Data.LobbyPolicyCache,
 
         # Telemetry
         concache_perm_sup(:telemetry_property_types_cache),
@@ -114,9 +116,6 @@ defmodule Teiserver.Application do
         concache_sup(:teiserver_login_count, global_ttl: 10_000),
         concache_sup(:teiserver_user_stat_cache),
 
-        # Caches - Battle/Queue/Clan
-        concache_sup(:teiserver_clan_cache_bang),
-
         # Caches - Chat
         Teiserver.Chat.RoomSystem,
         {Teiserver.HookServer, name: Teiserver.HookServer},
@@ -126,31 +125,17 @@ defmodule Teiserver.Application do
         Teiserver.Battle.LobbyIndexThrottle,
         {DynamicSupervisor, strategy: :one_for_one, name: Teiserver.Throttles.Supervisor},
 
-        # Bridge
-        Teiserver.Bridge.DiscordSystem,
-        concache_sup(:discord_bridge_dm_cache),
-        concache_perm_sup(:discord_channel_cache),
-        concache_sup(:discord_bridge_account_codes, global_ttl: 300_000),
-        concache_perm_sup(:discord_command_cache),
-
         # Lobbies
         Teiserver.Lobby.Cache,
         {DynamicSupervisor, strategy: :one_for_one, name: Teiserver.LobbySupervisor},
         {DynamicSupervisor, strategy: :one_for_one, name: Teiserver.ClientSupervisor},
         {DynamicSupervisor, strategy: :one_for_one, name: Teiserver.PartySupervisor},
-        {DynamicSupervisor, strategy: :one_for_one, name: Teiserver.LobbyPolicySupervisor},
 
         # Coordinator mode
         {DynamicSupervisor,
          strategy: :one_for_one, name: Teiserver.Coordinator.DynamicSupervisor},
         {DynamicSupervisor,
          strategy: :one_for_one, name: Teiserver.Coordinator.BalancerDynamicSupervisor},
-
-        # Accolades
-        {DynamicSupervisor, strategy: :one_for_one, name: Teiserver.Account.AccoladeSupervisor},
-
-        # Achievements
-        {Teiserver.Game.AchievementServer, name: Teiserver.Game.AchievementServer},
 
         # System throttle
         Teiserver.Account.LoginThrottleServer,
@@ -166,7 +151,7 @@ defmodule Teiserver.Application do
         {Plug.Cowboy,
          scheme: :http,
          plug: TeiserverWeb.Monitoring.Router,
-         options: [port: TeiserverWeb.Monitoring.Router.port()]},
+         options: [port: MonitoringRouter.port()]},
         Teiserver.Communication.Cache,
 
         # Start the endpoint after the rest of the systems are up
@@ -175,27 +160,35 @@ defmodule Teiserver.Application do
         # Start the ranch TCP listener process for the Spring protocol
         spring_server_child(Teiserver.RawSpringTcpServer, :tcp),
         # Start the ranch TLS listener process for the Spring protocol
-        spring_server_child(Teiserver.SSLSpringTcpServer, :tls)
+        spring_server_child(Teiserver.SSLSpringTcpServer, :tls),
+
+        # the discord system has a bot that connects to the tcp/tls server as a bot client
+        # so it needs to be started after the servers
+        Teiserver.Bridge.DiscordSystem
       ]
       |> Enum.reject(&is_nil/1)
+      |> Kernel.++(additional_application_children())
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Teiserver.Supervisor]
     start_result = Supervisor.start_link(children, opts)
 
-    # We use a logger.error to ensure something appears even on the error logs
-    # and we can be sure they're being written to
-    Logger.error("Teiserver.Supervisor start result: #{Kernel.inspect(start_result)}")
+    # If the server seems to not start up we can check the info log to see
+    # if this is present, we don't want it appearing in our tests though
+    # TODO: Replace this with something having less of a code-smell
+    if not Application.get_env(:teiserver, Teiserver)[:test_mode] do
+      Logger.error("Teiserver.Supervisor start result: #{Kernel.inspect(start_result)}")
+    end
 
     startup_sub_functions(start_result)
 
     start_result
   end
 
-  def startup_sub_functions({:error, _}), do: :error
+  def startup_sub_functions({:error, _reason}), do: :error
 
-  def startup_sub_functions(_) do
+  def startup_sub_functions(_result) do
     :timer.sleep(100)
 
     # Oban logging
@@ -206,20 +199,25 @@ defmodule Teiserver.Application do
       [:oban, :circuit, :trip]
     ]
 
-    :telemetry.attach_many("oban-logger", events, &Teiserver.Helper.ObanLogger.handle_event/4, [])
+    :telemetry.attach_many("oban-logger", events, &ObanLogger.handle_event/4, [])
 
-    Teiserver.Startup.startup()
+    Startup.startup()
+  end
+
+  @decorate Plugins.plugin(:additional_application_children)
+  defp additional_application_children do
+    []
   end
 
   # Tell Phoenix to update the endpoint configuration
   # whenever the application is updated.
-  @impl true
+  @impl Application
   def config_change(changed, _new, removed) do
-    TeiserverWeb.Endpoint.config_change(changed, removed)
+    Endpoint.config_change(changed, removed)
     :ok
   end
 
-  @impl true
+  @impl Application
   @spec prep_stop(map()) :: map()
   def prep_stop(state) do
     PubSub.broadcast(

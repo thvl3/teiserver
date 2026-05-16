@@ -3,11 +3,13 @@ defmodule Teiserver.Config do
   The Config context.
   """
 
-  import Ecto.Query, warn: false
-  alias Teiserver.Repo
-
+  alias Teiserver.Config.SiteConfig
   alias Teiserver.Config.UserConfig
   alias Teiserver.Data.Types, as: T
+  alias Teiserver.Helper.NumberHelper
+  alias Teiserver.Repo
+
+  import Ecto.Query, warn: false
 
   def get_user_config_cache(%{assigns: %{current_user: nil}}, key) do
     get_user_config_default(key)
@@ -186,7 +188,7 @@ defmodule Teiserver.Config do
 
   # User Config Types
   @spec get_user_config_types :: list()
-  def get_user_config_types() do
+  def get_user_config_types do
     Teiserver.store_get(:config_user_type_store, "all-config-types")
   end
 
@@ -196,7 +198,7 @@ defmodule Teiserver.Config do
   end
 
   @spec get_grouped_user_configs :: map()
-  def get_grouped_user_configs() do
+  def get_grouped_user_configs do
     Teiserver.store_get(:config_user_type_store, "all-config-types")
     |> Map.values()
     |> Enum.filter(fn c ->
@@ -280,14 +282,12 @@ defmodule Teiserver.Config do
     type = get_user_config_type(type_key)
 
     case type.type do
-      "integer" -> Teiserver.Helper.NumberHelper.int_parse(value)
+      "integer" -> NumberHelper.int_parse(value)
       "boolean" -> if value == "true", do: true, else: false
       "select" -> value
       "string" -> value
     end
   end
-
-  alias Teiserver.Config.SiteConfig
 
   @spec get_site_config_cache(String.t()) :: any
   def get_site_config_cache(key) do
@@ -374,7 +374,7 @@ defmodule Teiserver.Config do
 
   # Site Config Types
   @spec get_site_config_types :: list()
-  def get_site_config_types() do
+  def get_site_config_types do
     Teiserver.store_get(:config_site_type_store, "all-config-types")
   end
 
@@ -384,7 +384,7 @@ defmodule Teiserver.Config do
   end
 
   @spec get_grouped_site_configs :: map
-  def get_grouped_site_configs() do
+  def get_grouped_site_configs do
     (Teiserver.store_get(:config_site_type_store, "all-config-types") || %{})
     |> Map.values()
     |> Enum.sort(fn c1, c2 ->
@@ -462,8 +462,8 @@ defmodule Teiserver.Config do
     type = get_site_config_type(type_key)
 
     case type.type do
-      "integer" -> Teiserver.Helper.NumberHelper.int_parse(value)
-      "float" -> Teiserver.Helper.NumberHelper.float_parse(value)
+      "integer" -> NumberHelper.int_parse(value)
+      "float" -> NumberHelper.float_parse(value)
       "boolean" -> if value == "true" or value == true, do: true, else: false
       "select" -> value
       "string" -> value

@@ -1,7 +1,9 @@
 defmodule TeiserverWeb.Telemetry.SimpleLobbyEventController do
+  alias Teiserver.Account
+  alias Teiserver.Telemetry
+  alias Teiserver.Telemetry.ExportSimpleLobbyEventsTask
+  alias Teiserver.Telemetry.SimpleLobbyEventQueries
   use TeiserverWeb, :controller
-  alias Teiserver.{Account, Telemetry}
-  alias Teiserver.Telemetry.{ExportSimpleLobbyEventsTask, SimpleLobbyEventQueries}
   require Logger
 
   plug(AssignPlug,
@@ -60,7 +62,7 @@ defmodule TeiserverWeb.Telemetry.SimpleLobbyEventController do
         "7 days" -> Timex.now() |> Timex.shift(days: -7)
         "14 days" -> Timex.now() |> Timex.shift(days: -14)
         "31 days" -> Timex.now() |> Timex.shift(days: -31)
-        _ -> Timex.now() |> Timex.shift(days: -7)
+        _other -> Timex.now() |> Timex.shift(days: -7)
       end
 
     lobby_events =

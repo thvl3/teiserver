@@ -1,9 +1,10 @@
 defmodule TeiserverWeb.Microblog.BlogLive.Preferences do
   @moduledoc false
-  use TeiserverWeb, :live_view
+
   alias Teiserver.Microblog
-  import TeiserverWeb.MicroblogComponents
   alias Teiserver.Microblog.UserPreferenceLib
+  use TeiserverWeb, :live_view
+  import TeiserverWeb.MicroblogComponents
 
   @default_preferences %{
     tag_mode: "Block",
@@ -13,7 +14,7 @@ defmodule TeiserverWeb.Microblog.BlogLive.Preferences do
     disabled_posters: []
   }
 
-  @impl true
+  @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     socket =
       if is_connected?(socket) do
@@ -44,8 +45,8 @@ defmodule TeiserverWeb.Microblog.BlogLive.Preferences do
      |> load_preferences()}
   end
 
-  @impl true
-  def handle_event("toggle-help", _, %{assigns: assigns} = socket) do
+  @impl Phoenix.LiveView
+  def handle_event("toggle-help", _params, %{assigns: assigns} = socket) do
     {:noreply,
      socket
      |> assign(:show_help_box, not assigns.show_help_box)}

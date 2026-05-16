@@ -52,11 +52,11 @@ defmodule Teiserver.PromEx do
      to Grafana in the `dashboards/0` function.
   """
 
-  use PromEx, otp_app: :teiserver
-
   alias PromEx.Plugins
 
-  @impl true
+  use PromEx, otp_app: :teiserver
+
+  @impl PromEx
   def plugins do
     [
       # PromEx built in plugins
@@ -75,7 +75,7 @@ defmodule Teiserver.PromEx do
     ]
   end
 
-  @impl true
+  @impl PromEx
   def dashboard_assigns do
     [
       datasource_id: "VictoriaMetrics",
@@ -83,7 +83,7 @@ defmodule Teiserver.PromEx do
     ]
   end
 
-  @impl true
+  @impl PromEx
   def dashboards do
     [
       # PromEx built in Grafana dashboards

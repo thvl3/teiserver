@@ -1,14 +1,15 @@
 defmodule TeiserverWeb.Microblog.Admin.TagLive.Index do
   @moduledoc false
-  use TeiserverWeb, :live_view
-  alias Teiserver.Microblog
 
-  @impl true
+  alias Teiserver.Microblog
+  use TeiserverWeb, :live_view
+
+  @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     {:ok, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_params(params, _url, socket) do
     case allow?(socket.assigns[:current_user], "Server") do
       true ->
@@ -27,10 +28,10 @@ defmodule TeiserverWeb.Microblog.Admin.TagLive.Index do
     |> assign(:tags, Microblog.list_tags(order_by: ["Name (A-Z)"]))
     |> assign(:tag, nil)
     |> assign(:site_menu_active, "microblog")
-    |> assign(:view_colour, Teiserver.Microblog.colours())
+    |> assign(:view_colour, Microblog.colours())
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_info({TeiserverWeb.Microblog.TagFormComponent, {:saved, _tag}}, socket) do
     {:noreply,
      socket

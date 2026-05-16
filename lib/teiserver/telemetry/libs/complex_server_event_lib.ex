@@ -1,17 +1,19 @@
 defmodule Teiserver.Telemetry.ComplexServerEventLib do
   @moduledoc false
-  use TeiserverWeb, :library_newform
-  alias Teiserver.Telemetry
-  alias Teiserver.Telemetry.{ComplexServerEvent, ComplexServerEventQueries}
+
   alias Phoenix.PubSub
+  alias Teiserver.Telemetry
+  alias Teiserver.Telemetry.ComplexServerEvent
+  alias Teiserver.Telemetry.ComplexServerEventQueries
+  use TeiserverWeb, :library_newform
 
   @broadcast_event_types ~w(game_start:singleplayer:scenario_end)
 
   @spec colour :: atom
-  def colour(), do: :info2
+  def colour, do: :info2
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-database"
+  def icon, do: "fa-database"
 
   @spec log_complex_server_event(T.userid() | nil, String, map()) ::
           {:error, Ecto.Changeset} | {:ok, ComplexServerEvent}
@@ -43,7 +45,7 @@ defmodule Teiserver.Telemetry.ComplexServerEventLib do
 
         result
 
-      _ ->
+      _error ->
         result
     end
   end

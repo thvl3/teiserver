@@ -1,14 +1,15 @@
 defmodule Teiserver.TachyonLobby.Registry do
+  @moduledoc false
   alias Teiserver.TachyonLobby.Lobby
 
-  def child_spec(_) do
+  def child_spec(_arg) do
     Supervisor.child_spec(Registry,
       id: __MODULE__,
       start: {__MODULE__, :start_link, []}
     )
   end
 
-  def start_link() do
+  def start_link do
     Registry.start_link(keys: :unique, name: __MODULE__)
   end
 
@@ -16,20 +17,20 @@ defmodule Teiserver.TachyonLobby.Registry do
   How to reach a given lobby from its ID
   """
   @spec via_tuple(Lobby.id()) :: GenServer.name()
-  def via_tuple(queue_id) do
-    {:via, Registry, {__MODULE__, queue_id}}
+  def via_tuple(lobby_id) do
+    {:via, Registry, {__MODULE__, lobby_id}}
   end
 
   @spec lookup(Lobby.id()) :: pid() | nil
   def lookup(lobby_id) do
     case Registry.lookup(__MODULE__, lobby_id) do
-      [{pid, _}] -> pid
-      _ -> nil
+      [{pid, _value}] -> pid
+      _other -> nil
     end
   end
 
   @spec count() :: non_neg_integer()
-  def count() do
+  def count do
     Registry.count(__MODULE__)
   rescue
     # when the registry isn't up (yet), can happen with telemetry polling
@@ -37,7 +38,14 @@ defmodule Teiserver.TachyonLobby.Registry do
   end
 
   @spec list_lobbies() :: [{Lobby.id(), pid()}]
-  def list_lobbies() do
+  def list_lobbies do
     Registry.select(__MODULE__, [{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
+  end
+
+  @doc """
+  useful for tests, there shouldn't be a need for that outside testing
+  """
+  def register(lobby_id) do
+    Registry.register(__MODULE__, lobby_id, nil)
   end
 end

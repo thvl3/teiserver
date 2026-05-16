@@ -1,14 +1,14 @@
 defmodule Teiserver.Account.AccoladeLib do
-  @moduledoc """
+  @moduledoc false
 
-  """
-  use TeiserverWeb, :library
-  alias Teiserver.{Account, CacheUser}
-  alias Teiserver.Account.{Accolade, AccoladeBotServer, AccoladeChatServer}
+  alias Ecto.Adapters.SQL
+  alias Teiserver.Account
+  alias Teiserver.Account.Accolade
   alias Teiserver.Data.Types, as: T
+  use TeiserverWeb, :library
   require Logger
 
-  def miss_count_limit(), do: 20
+  def miss_count_limit, do: 20
 
   # Functions
   @spec icon :: String.t()
@@ -25,7 +25,7 @@ defmodule Teiserver.Account.AccoladeLib do
       item_id: accolade.id,
       item_type: "teiserver_account_accolade",
       item_colour: StylingHelper.colours(colours()) |> elem(0),
-      item_icon: Teiserver.Account.AccoladeLib.icon(),
+      item_icon: icon(),
       item_label: "#{accolade.name}",
       url: "/account/accolades/#{accolade.id}"
     }
@@ -48,8 +48,8 @@ defmodule Teiserver.Account.AccoladeLib do
   end
 
   @spec _search(Ecto.Query.t(), atom(), any()) :: Ecto.Query.t()
-  def _search(query, _, ""), do: query
-  def _search(query, _, nil), do: query
+  def _search(query, _key, ""), do: query
+  def _search(query, _key, nil), do: query
 
   def _search(query, :id, id) do
     from accolades in query,
@@ -74,7 +74,7 @@ defmodule Teiserver.Account.AccoladeLib do
   end
 
   def _search(query, :filter, "all"), do: query
-  def _search(query, :filter, {"all", _}), do: query
+  def _search(query, :filter, {"all", _value}), do: query
 
   def _search(query, :filter, {"recipient", user_id}) do
     from accolades in query,
@@ -192,95 +192,6 @@ defmodule Teiserver.Account.AccoladeLib do
       preload: [giver: givers]
   end
 
-  @spec do_start() :: :ok
-  defp do_start() do
-    # Start the supervisor server
-    {:ok, _accolade_server_pid} =
-      DynamicSupervisor.start_child(Teiserver.Account.AccoladeSupervisor, {
-        AccoladeBotServer,
-        name: Teiserver.Account.AccoladeBotServer, data: %{}
-      })
-
-    :ok
-  end
-
-  # @spec get_accolade_bot_pid() :: pid()
-  # defp get_accolade_bot_pid() do
-  #   Teiserver.cache_get(:teiserver_accolade_server, :accolade_server)
-  # end
-
-  @spec start_accolade_server() :: :ok | {:failure, String.t()}
-  def start_accolade_server() do
-    cond do
-      get_accolade_bot_userid() != nil ->
-        {:failure, "Already started"}
-
-      true ->
-        do_start()
-    end
-  end
-
-  @spec cast_accolade_bot(any) :: any
-  def cast_accolade_bot(msg) do
-    case get_accolade_bot_pid() do
-      nil -> nil
-      pid -> send(pid, msg)
-    end
-  end
-
-  @spec call_accolade_bot(any) :: any
-  def call_accolade_bot(msg) do
-    case get_accolade_bot_pid() do
-      nil ->
-        nil
-
-      pid ->
-        try do
-          GenServer.call(pid, msg)
-
-          # If the process has somehow died, we just return nil
-        catch
-          :exit, _ ->
-            nil
-        end
-    end
-  end
-
-  @spec get_accolade_bot_userid() :: T.userid()
-  def get_accolade_bot_userid() do
-    Teiserver.cache_get(:application_metadata_cache, "teiserver_accolade_userid")
-  end
-
-  @spec get_accolade_bot_pid() :: pid() | nil
-  def get_accolade_bot_pid() do
-    case Horde.Registry.lookup(Teiserver.AccoladesRegistry, "AccoladeBotServer") do
-      [{pid, _}] ->
-        pid
-
-      _ ->
-        nil
-    end
-  end
-
-  @spec get_accolade_chat_pid(T.userid()) :: pid() | nil
-  def get_accolade_chat_pid(userid) do
-    case Horde.Registry.lookup(Teiserver.AccoladesRegistry, "AccoladeChatServer:#{userid}") do
-      [{pid, _}] ->
-        pid
-
-      _ ->
-        nil
-    end
-  end
-
-  @spec cast_accolade_chat(T.userid(), any) :: any
-  def cast_accolade_chat(userid, msg) do
-    case get_accolade_chat_pid(userid) do
-      nil -> nil
-      pid -> send(pid, msg)
-    end
-  end
-
   @spec get_possible_ratings(T.userid(), [map()]) :: any
   def get_possible_ratings(userid, memberships) do
     their_membership = Enum.filter(memberships, fn m -> m.user_id == userid end) |> hd()
@@ -307,7 +218,7 @@ defmodule Teiserver.Account.AccoladeLib do
   end
 
   defp allow_accolades_for_user?(userid) do
-    if CacheUser.is_restricted?(userid, ["Accolades", "Community"]) do
+    if Account.restricted?(userid, ["Accolades", "Community"]) do
       false
     else
       stats = Account.get_user_stat_data(userid)
@@ -321,35 +232,8 @@ defmodule Teiserver.Account.AccoladeLib do
     end
   end
 
-  @spec start_chat_server(T.userid(), T.userid(), T.lobby_id()) :: pid()
-  def start_chat_server(userid, recipient_id, match_id) do
-    {:ok, chat_server_pid} =
-      DynamicSupervisor.start_child(Teiserver.Account.AccoladeSupervisor, {
-        AccoladeChatServer,
-        name: "accolade_chat_#{userid}",
-        data: %{
-          userid: userid,
-          recipient_id: recipient_id,
-          match_id: match_id
-        }
-      })
-
-    chat_server_pid
-  end
-
-  @spec start_accolade_process(T.userid(), T.userid(), T.lobby_id()) :: :ok | :existing
-  def start_accolade_process(userid, recipient_id, match_id) do
-    case get_accolade_chat_pid(userid) do
-      nil ->
-        start_chat_server(userid, recipient_id, match_id)
-
-      _pid ->
-        :existing
-    end
-  end
-
   @spec get_badge_types() :: [{non_neg_integer(), map()}]
-  def get_badge_types() do
+  def get_badge_types do
     Teiserver.cache_get_or_store(:application_temp_cache, "accolade_badges", fn ->
       Account.list_badge_types(search: [purpose: "Accolade"], order_by: "Name (A-Z)")
       |> Enum.with_index()
@@ -371,7 +255,7 @@ defmodule Teiserver.Account.AccoladeLib do
       where (restriction in ($1) or restriction is null) and purpose = 'Accolade'
 order by name;"
 
-    results = Ecto.Adapters.SQL.query!(Repo, query, [restriction])
+    results = SQL.query!(Repo, query, [restriction])
 
     results.rows
     |> Enum.map(fn [id, name, icon, colour] ->
@@ -392,46 +276,6 @@ order by name;"
     |> Map.new(fn {k, v} -> {k, Enum.count(v)} end)
   end
 
-  @spec live_debug :: nil | :ok
-  def live_debug do
-    case get_accolade_bot_pid() do
-      nil ->
-        Logger.error("Error, no accolade bot pid")
-
-      pid ->
-        state = :sys.get_state(pid)
-        children = DynamicSupervisor.which_children(Teiserver.Account.AccoladeSupervisor)
-        child_count = Enum.count(children) - 1
-
-        Logger.info("Accolade bot found, state is:")
-        Logger.info("#{Kernel.inspect(state)}")
-        Logger.info("Accolade chat count: #{child_count}")
-
-        if Enum.count(children) > 1 do
-          Logger.info("Pinging all chat servers...")
-
-          pings =
-            children
-            |> ParallelStream.filter(fn {_, _, _, [module]} ->
-              module == Teiserver.Account.AccoladeChatServer
-            end)
-            |> ParallelStream.map(fn {_, pid, _, _} ->
-              case GenServer.call(pid, :ping, 5000) do
-                :ok -> :ok
-                _ -> :not_okay
-              end
-            end)
-            |> Enum.filter(fn p -> p == :ok end)
-
-          rate = (Enum.count(pings) / child_count * 100) |> round()
-
-          Logger.info(
-            "Out of #{child_count} children, #{Enum.count(pings)} respond to ping (#{rate}%)"
-          )
-        end
-    end
-  end
-
   def get_number_of_gifted_accolades(user_id, window_days) do
     query = """
     select count(*) from teiserver_account_accolades taa
@@ -440,7 +284,7 @@ order by name;"
     """
 
     results =
-      Ecto.Adapters.SQL.query!(Repo, query, [user_id])
+      SQL.query!(Repo, query, [user_id])
 
     [[count]] = results.rows
     count
@@ -455,7 +299,7 @@ order by name;"
     """
 
     results =
-      Ecto.Adapters.SQL.query!(Repo, query, [giver_id, recipient_id, match_id])
+      SQL.query!(Repo, query, [giver_id, recipient_id, match_id])
 
     [[count]] = results.rows
     count > 0
@@ -470,7 +314,7 @@ order by name;"
     """
 
     result =
-      Ecto.Adapters.SQL.query!(Repo, query, [recipient_id])
+      SQL.query!(Repo, query, [recipient_id])
 
     [[unique_giver_count, total_accolades]] = result.rows
 
@@ -492,7 +336,7 @@ order by name;"
     """
 
     result =
-      Ecto.Adapters.SQL.query!(Repo, query, [recipient_id])
+      SQL.query!(Repo, query, [recipient_id])
 
     case result.num_rows do
       1 ->
@@ -503,7 +347,7 @@ order by name;"
           giver_name: giver_name
         }
 
-      _ ->
+      _other ->
         nil
     end
   end

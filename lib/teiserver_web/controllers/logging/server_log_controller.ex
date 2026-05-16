@@ -1,8 +1,9 @@
 defmodule TeiserverWeb.Logging.ServerLogController do
-  use TeiserverWeb, :controller
+  alias Teiserver.Helper.ChartHelper
+  alias Teiserver.Helper.TimexHelper
   alias Teiserver.Logging
-  alias Teiserver.Helper.{TimexHelper, ChartHelper}
-  alias Teiserver.Logging.{GraphMinuteLogsTask}
+  alias Teiserver.Logging.GraphMinuteLogsTask
+  use TeiserverWeb, :controller
   import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
 
   plug(AssignPlug,
@@ -11,6 +12,7 @@ defmodule TeiserverWeb.Logging.ServerLogController do
   )
 
   plug Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Staff.Moderator,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}

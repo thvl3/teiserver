@@ -1,19 +1,20 @@
 defmodule Teiserver.Account.CodeLib do
   @moduledoc false
-  use TeiserverWeb, :library
+
   alias Teiserver.Account.Code
+  use TeiserverWeb, :library
 
   @spec colours :: atom
-  def colours(), do: :info
+  def colours, do: :info
 
   @spec icon :: String.t()
-  def icon(), do: "fa-solid fa-diamond"
+  def icon, do: "fa-solid fa-diamond"
 
   @doc """
   Returns a list of the code types we can manually use (e.g. not password_reset)
   """
   @spec code_types() :: [String.t()]
-  def code_types() do
+  def code_types do
     ~w(
       one_time_login
       reset_password
@@ -37,8 +38,8 @@ defmodule Teiserver.Account.CodeLib do
   end
 
   @spec _search(Ecto.Query.t(), atom, any) :: Ecto.Query.t()
-  def _search(query, _, ""), do: query
-  def _search(query, _, nil), do: query
+  def _search(query, _key, ""), do: query
+  def _search(query, _key, nil), do: query
 
   def _search(query, :id, id) do
     from codes in query,

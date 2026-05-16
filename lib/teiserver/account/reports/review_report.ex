@@ -1,12 +1,14 @@
 defmodule Teiserver.Account.ReviewReport do
+  @moduledoc false
   alias Teiserver.Helper.DatePresets
-  alias Teiserver.{Logging}
+  alias Teiserver.Logging
+  alias Teiserver.Logging.ServerDayLogLib
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-champagne-glasses"
+  def icon, do: "fa-solid fa-champagne-glasses"
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Admin"
+  def permissions, do: "Moderator"
 
   @spec run(Plug.Conn.t(), map()) :: {map(), map()}
   def run(_conn, params) do
@@ -28,7 +30,7 @@ defmodule Teiserver.Account.ReviewReport do
         ],
         limit: :infinity
       )
-      |> Teiserver.Logging.ServerDayLogLib.aggregate_day_logs()
+      |> ServerDayLogLib.aggregate_day_logs()
       |> Jason.encode!()
       |> Jason.decode!()
 
@@ -44,7 +46,7 @@ defmodule Teiserver.Account.ReviewReport do
         ],
         limit: :infinity
       )
-      |> Teiserver.Logging.ServerDayLogLib.aggregate_day_logs()
+      |> ServerDayLogLib.aggregate_day_logs()
       |> Jason.encode!()
       |> Jason.decode!()
 

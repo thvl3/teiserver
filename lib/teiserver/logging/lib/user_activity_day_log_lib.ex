@@ -1,17 +1,18 @@
 defmodule Teiserver.Logging.UserActivityDayLogLib do
   @moduledoc false
-  use TeiserverWeb, :library
 
   alias Teiserver.Logging.UserActivityDayLog
 
+  use TeiserverWeb, :library
+
   @spec colours :: atom
-  def colours(), do: :warning
+  def colours, do: :warning
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-wave-pulse"
+  def icon, do: "fa-solid fa-wave-pulse"
 
   @spec get_user_activity_day_logs :: Ecto.Query.t()
-  def get_user_activity_day_logs() do
+  def get_user_activity_day_logs do
     from(logs in UserActivityDayLog)
   end
 
@@ -26,8 +27,8 @@ defmodule Teiserver.Logging.UserActivityDayLogLib do
   end
 
   @spec _search(Ecto.Query.t(), atom, any) :: Ecto.Query.t()
-  def _search(query, _, ""), do: query
-  def _search(query, _, nil), do: query
+  def _search(query, _key, ""), do: query
+  def _search(query, _key, nil), do: query
 
   def _search(query, :date, date) do
     from logs in query,

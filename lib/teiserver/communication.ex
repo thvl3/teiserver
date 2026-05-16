@@ -1,13 +1,14 @@
 defmodule Teiserver.Communication do
-  @moduledoc """
+  @moduledoc false
 
-  """
-  import Ecto.Query, warn: false
+  alias Teiserver.Communication.DiscordChannel
+  alias Teiserver.Communication.DiscordChannelLib
+  alias Teiserver.Communication.TextCallback
+  alias Teiserver.Communication.TextCallbackLib
+  alias Teiserver.Data.Types, as: T
   alias Teiserver.Helper.QueryHelpers
   alias Teiserver.Repo
-  alias Teiserver.Data.Types, as: T
-
-  alias Teiserver.Communication.{TextCallback, TextCallbackLib}
+  import Ecto.Query, warn: false
 
   @spec lobby_text_callback(List.t()) :: Ecto.Query.t()
   def lobby_text_callback(args) do
@@ -193,18 +194,16 @@ defmodule Teiserver.Communication do
   defdelegate set_last_triggered_time(text_callback, channel_id), to: TextCallbackLib
 
   # Discord channels
-  alias Teiserver.Communication.{DiscordChannel, DiscordChannelLib}
-
   @spec list_discord_channels() :: [DiscordChannel]
   defdelegate list_discord_channels(), to: DiscordChannelLib
 
   @spec list_discord_channels(list) :: [DiscordChannel]
   defdelegate list_discord_channels(args), to: DiscordChannelLib
 
-  @spec get_discord_channel!(non_neg_integer()) :: DiscordChannel.t()
+  @spec get_discord_channel!(non_neg_integer() | String.t()) :: DiscordChannel.t()
   defdelegate get_discord_channel!(discord_channel_id), to: DiscordChannelLib
 
-  @spec get_discord_channel(non_neg_integer()) :: DiscordChannel.t() | nil
+  @spec get_discord_channel(non_neg_integer() | String.t()) :: DiscordChannel.t() | nil
   defdelegate get_discord_channel(discord_channel_id), to: DiscordChannelLib
 
   @spec create_discord_channel() :: {:ok, DiscordChannel} | {:error, Ecto.Changeset}
@@ -244,22 +243,22 @@ defmodule Teiserver.Communication do
   defdelegate get_discord_message(channel_id, message_id), to: DiscordChannelLib
 
   @spec edit_discord_message(non_neg_integer | String.t(), non_neg_integer, String.t()) ::
-          map | nil | {:error, String.t()}
+          map | nil | {:error, any()}
   defdelegate edit_discord_message(channel_id, message_id, new_message), to: DiscordChannelLib
 
   @spec delete_discord_message(non_neg_integer | String.t(), non_neg_integer) ::
-          map | nil | {:error, String.t()}
+          map | nil | {:error, any()}
   defdelegate delete_discord_message(channel_id, message_id), to: DiscordChannelLib
 
-  @spec send_discord_dm(T.userid(), String.t()) :: map | nil | {:error, String.t()}
+  @spec send_discord_dm(T.userid(), String.t()) :: map | nil | {:error, any()}
   defdelegate send_discord_dm(userid, message), to: DiscordChannelLib
 
   @spec create_discord_reaction(non_neg_integer | String.t(), non_neg_integer, String.t()) ::
-          map | nil | {:error, String.t()}
+          map | nil | {:error, any()}
   defdelegate create_discord_reaction(channel_id, message_id, emoji), to: DiscordChannelLib
 
   @spec delete_discord_reaction(non_neg_integer | String.t(), non_neg_integer, String.t()) ::
-          map | nil | {:error, String.t()}
+          map | nil | {:error, any()}
   defdelegate delete_discord_reaction(channel_id, message_id, emoji), to: DiscordChannelLib
 
   @doc """

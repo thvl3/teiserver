@@ -1,7 +1,9 @@
 defmodule Teiserver.Admin.DeleteUserTask do
   @moduledoc false
+  alias Ecto.Adapters.SQL
+  alias Teiserver.Account
+  alias Teiserver.CacheUser
   alias Teiserver.Repo
-  alias Teiserver.{Account, CacheUser}
 
   @doc """
   Expects a list of user ids, returns the results of the query
@@ -18,9 +20,6 @@ defmodule Teiserver.Admin.DeleteUserTask do
     |> Enum.each(&Account.decache_user/1)
 
     [
-      # Clan memberships
-      "DELETE FROM teiserver_clan_memberships WHERE user_id = ANY($1)",
-
       # Accolades
       "DELETE FROM teiserver_account_accolades WHERE recipient_id = ANY($1) OR giver_id = ANY($1)",
 
@@ -65,12 +64,12 @@ defmodule Teiserver.Admin.DeleteUserTask do
       "DELETE FROM moderation_actions WHERE target_id = ANY($1)"
     ]
     |> Enum.each(fn query ->
-      Ecto.Adapters.SQL.query!(Repo, query, [id_list])
+      SQL.query!(Repo, query, [id_list])
     end)
 
     # And now the users
     query = "DELETE FROM account_users WHERE id = ANY($1)"
-    Ecto.Adapters.SQL.query!(Repo, query, [id_list])
+    SQL.query!(Repo, query, [id_list])
 
     # Delete our cache of them
     id_list

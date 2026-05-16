@@ -1,14 +1,15 @@
 defmodule Teiserver.Telemetry.InfologLib do
   @moduledoc false
-  use TeiserverWeb, :library
+
   alias Teiserver.Telemetry.Infolog
+  use TeiserverWeb, :library
 
   # Functions
   @spec colours :: atom
-  def colours(), do: :success2
+  def colours, do: :success2
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-barcode"
+  def icon, do: "fa-solid fa-barcode"
 
   # Queries
   @spec query_infologs() :: Ecto.Query.t()
@@ -27,8 +28,8 @@ defmodule Teiserver.Telemetry.InfologLib do
   end
 
   @spec _search(Ecto.Query.t(), atom(), any()) :: Ecto.Query.t()
-  def _search(query, _, ""), do: query
-  def _search(query, _, nil), do: query
+  def _search(query, _key, ""), do: query
+  def _search(query, _key, nil), do: query
 
   def _search(query, :id, id) do
     from infologs in query,

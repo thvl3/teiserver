@@ -1,15 +1,17 @@
 defmodule Teiserver.Account.LeaderboardReport do
-  alias Teiserver.{Account}
+  @moduledoc false
+  alias Ecto.Adapters.SQL
+  alias Teiserver.Account
+  alias Teiserver.Account.RatingLib
   alias Teiserver.Game.MatchRatingLib
-  # alias Teiserver.Battle.BalanceLib
-  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
   alias Teiserver.Repo
+  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
 
   @spec icon() :: String.t()
-  def icon(), do: Teiserver.Account.RatingLib.icon()
+  def icon, do: RatingLib.icon()
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Admin"
+  def permissions, do: "Moderator"
 
   @spec run(Plug.Conn.t(), map()) :: {nil, map()}
   def run(_conn, params) do
@@ -159,7 +161,7 @@ defmodule Teiserver.Account.LeaderboardReport do
         memberships.user_id
     """
 
-    case Ecto.Adapters.SQL.query(Repo, query, [userids, after_date, type_name]) do
+    case SQL.query(Repo, query, [userids, after_date, type_name]) do
       {:ok, results} ->
         results.rows
         |> Map.new(fn [userid, count, wins] ->

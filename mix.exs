@@ -10,7 +10,6 @@ defmodule Teiserver.MixProject do
       package: package(),
       dialyzer: dialyzer(),
       elixirc_paths: elixirc_paths(Mix.env()),
-      elixirc_options: [warnings_as_errors: true],
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
@@ -21,6 +20,7 @@ defmodule Teiserver.MixProject do
   def cli do
     [
       preferred_envs: [
+        precommit: :test,
         coveralls: :test,
         "coveralls.detail": :test,
         "coveralls.post": :test,
@@ -63,7 +63,7 @@ defmodule Teiserver.MixProject do
   defp deps do
     [
       # Default phoenix deps
-      {:phoenix, "~> 1.7"},
+      {:phoenix, "~> 1.7.22"},
       {:phoenix_ecto, "~> 4.6"},
       {:ecto_sql, "~> 3.12"},
       {:postgrex, ">= 0.0.0"},
@@ -83,7 +83,7 @@ defmodule Teiserver.MixProject do
       {:peep, "~> 3.5.0"},
       {:gettext, "~> 0.20"},
       {:jason, "~> 1.2"},
-      {:plug_cowboy, "~> 2.5"},
+      {:plug_cowboy, "~> 2.8"},
 
       # Temporary deps while we transition away from views
       {:phoenix_view, "~> 2.0"},
@@ -105,6 +105,7 @@ defmodule Teiserver.MixProject do
       {:elixir_uuid, "~> 1.2"},
       {:excoveralls, "~> 0.15.3", only: :test, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:jump_credo_checks, "~> 0.1.0", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
       {:dart_sass, "~> 0.7", only: [:dev]},
@@ -126,7 +127,8 @@ defmodule Teiserver.MixProject do
       {:etop, "~> 0.7.0"},
       {:cowlib, "~> 2.11", hex: :remedy_cowlib, override: true},
       {:json_xema, "~> 0.3"},
-      {:nostrum, "~> 0.10"},
+      {:nostrum, "~> 0.10.4"},
+      {:decorator, "~> 1.2"},
 
       # gun is a transitive dependency of nostrum. The version 2.1.0 works,
       # while the next one, 2.2.0 produces the following error when starting
@@ -183,6 +185,14 @@ defmodule Teiserver.MixProject do
         "sass dark --no-source-map --style=compressed",
         "sass light --no-source-map --style=compressed",
         "phx.digest"
+      ],
+      precommit: [
+        "deps.unlock --check-unused",
+        "compile --force --warning-as-errors",
+        "format",
+        "credo",
+        "test --raise --warnings-as-errors --exclude needs_attention",
+        "cmd --shell MIX_ENV=dev mix dialyzer --list-unused-filters"
       ]
     ]
   end

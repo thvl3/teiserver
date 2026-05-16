@@ -1,9 +1,10 @@
 defmodule Teiserver.Account.TOTPLibTest do
-  use Teiserver.DataCase, async: false
-
-  alias Teiserver.Account.{TOTPLib, TOTP}
-  alias Central.Helpers.GeneralTestLib
   alias NimbleTOTP
+  alias Teiserver.Account.TOTP
+  alias Teiserver.Account.TOTPLib
+  alias Teiserver.Helpers.GeneralTestLib
+
+  use Teiserver.DataCase, async: false
 
   defp users(_context) do
     user_with_totp = GeneralTestLib.make_user(%{name: "has_totp"})

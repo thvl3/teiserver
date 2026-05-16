@@ -1,3 +1,16 @@
 # see documents/guides/development.md for usage
 9bb669ea86949ceba75d95d05578f67e8ace5351
 40157923b1241c63ca5be17696415a500e64dbdd
+
+# Credo alias merge
+57f02198bfb4bf3a8343099f1c0c6a3be0ca9b0c
+
+# Credo StrictModuleLayout
+ac3bf08f9d179b294367a857c721fa5d3de792f0
+
+# ParenthesesOnZeroArityDefs
+049d59ae692af3f84f837c4e0b83024ea7f87bb8
+
+# UnusedVariableNames
+4542601b1dc1657bc0ebcb3ea7bfcfb7062c7ee9
+

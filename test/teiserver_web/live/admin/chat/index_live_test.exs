@@ -1,7 +1,7 @@
 defmodule TeiserverWeb.Admin.ChatLive.IndexLiveTest do
-  use TeiserverWeb.ConnCase, async: true
+  alias Teiserver.Helpers.GeneralTestLib
 
-  alias Central.Helpers.GeneralTestLib
+  use TeiserverWeb.ConnCase, async: true
 
   test "cannot access admin chat without authenticating" do
     {:ok, kw} = GeneralTestLib.conn_setup([], [:no_login])

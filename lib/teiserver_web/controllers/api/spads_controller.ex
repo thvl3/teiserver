@@ -1,15 +1,18 @@
 defmodule TeiserverWeb.API.SpadsController do
-  use TeiserverWeb, :controller
+  alias Teiserver.Account
+  alias Teiserver.Battle
+  alias Teiserver.Battle.BalanceLib
+  alias Teiserver.Battle.MatchLib
   alias Teiserver.Config
-  alias Teiserver.{Account, Coordinator, Battle}
-  alias Teiserver.Battle.{BalanceLib, MatchLib}
-  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
+  alias Teiserver.Coordinator
+  use TeiserverWeb, :controller
   require Logger
+  import Teiserver.Helper.NumberHelper, only: [int_parse: 1]
 
   @spec get_rating(Plug.Conn.t(), map) :: Plug.Conn.t()
   def get_rating(conn, %{
         "target_id" => "None",
-        "type" => _
+        "type" => _type
       }) do
     conn
     |> put_status(200)
@@ -67,13 +70,13 @@ defmodule TeiserverWeb.API.SpadsController do
     player_data =
       case raw_player_data do
         {:ok, data} -> data
-        _ -> :error
+        _error -> :error
       end
 
     bot_data =
       case bot_data do
         {:ok, data} -> data
-        _ -> :error
+        _error -> :error
       end
 
     # first_player_id = player_data
@@ -137,60 +140,52 @@ defmodule TeiserverWeb.API.SpadsController do
             opts
           })
 
-        if is_non_empty_balance_result?(balance_result) do
-          # Get some counts for later
-          team_count =
-            balance_result.team_sizes
-            |> Enum.count()
+        case get_balance_team_dimensions(balance_result) do
+          {:ok, {team_count, team_size}} ->
+            # Get the rating type
+            rating_type = MatchLib.game_type(team_size, team_count)
 
-          team_size =
-            balance_result.team_sizes
-            |> Map.values()
-            |> Enum.max()
+            # Temporary solution until Team FFA ratings are fixed
+            rating_type =
+              case rating_type do
+                "Team FFA" -> "Large Team"
+                v -> v
+              end
 
-          # Get the rating type
-          rating_type = MatchLib.game_type(team_size, team_count)
-
-          # Temporary solution until Team FFA ratings are fixed
-          rating_type =
-            case rating_type do
-              "Team FFA" -> "Large Team"
-              v -> v
-            end
-
-          player_result =
-            balance_result.team_players
-            |> Enum.map(fn {team_id, players} ->
-              players
-              |> Enum.map(fn userid ->
-                rating_value = BalanceLib.get_user_rating_value(userid, rating_type)
-                {team_id, rating_value, userid, Account.get_username_by_id(userid)}
+            player_result =
+              balance_result.team_players
+              |> Enum.map(fn {team_id, players} ->
+                players
+                |> Enum.map(fn userid ->
+                  rating_value = BalanceLib.get_user_rating_value(userid, rating_type)
+                  {team_id, rating_value, userid, Account.get_username_by_id(userid)}
+                end)
               end)
-            end)
-            |> List.flatten()
-            |> Enum.sort(&>=/2)
-            |> Enum.with_index()
-            |> Map.new(fn {{team_id, _, _, username}, idx} ->
-              {username,
-               %{
-                 "team" => team_id - 1,
-                 "id" => idx
-               }}
-            end)
+              |> List.flatten()
+              |> Enum.sort(&>=/2)
+              |> Enum.with_index()
+              |> Map.new(fn {{team_id, _rating, _uncertainty, username}, idx} ->
+                {username,
+                 %{
+                   "team" => team_id - 1,
+                   "id" => idx
+                 }}
+              end)
 
-          bot_result = %{}
+            bot_result = %{}
 
-          conn
-          |> put_status(200)
-          |> assign(:deviation, balance_result.deviation)
-          |> assign(:players, player_result)
-          |> assign(:bots, bot_result)
-          |> render("balance_battle.json")
-        else
-          # No balance result
-          conn
-          |> put_status(200)
-          |> render("empty.json")
+            conn
+            |> put_status(200)
+            |> assign(:deviation, balance_result.deviation)
+            |> assign(:players, player_result)
+            |> assign(:bots, bot_result)
+            |> render("balance_battle.json")
+
+          :error ->
+            # No balance result
+            conn
+            |> put_status(200)
+            |> render("empty.json")
         end
 
       true ->
@@ -209,11 +204,16 @@ defmodule TeiserverWeb.API.SpadsController do
     |> render("empty.json")
   end
 
-  def is_non_empty_balance_result?(balance_result) do
-    cond do
-      balance_result == nil -> false
-      balance_result.team_sizes == %{} -> false
-      true -> true
+  @spec get_balance_team_dimensions(map() | nil) ::
+          {:ok, {pos_integer(), pos_integer()}} | :error
+  def get_balance_team_dimensions(balance_result) do
+    with %{team_sizes: team_sizes} when is_map(team_sizes) <- balance_result,
+         false <- Enum.empty?(team_sizes),
+         team_size <- team_sizes |> Map.values() |> Enum.max(fn -> 0 end),
+         true <- is_integer(team_size) and team_size > 0 do
+      {:ok, {map_size(team_sizes), team_size}}
+    else
+      _other -> :error
     end
   end
 end

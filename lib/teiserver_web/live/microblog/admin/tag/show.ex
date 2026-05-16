@@ -1,14 +1,18 @@
 defmodule TeiserverWeb.Microblog.Admin.TagLive.Show do
   @moduledoc false
-  use TeiserverWeb, :live_view
+
   alias Teiserver.Microblog
 
-  @impl true
+  use TeiserverWeb, :live_view
+
+  import Teiserver.Microblog, only: [colours: 0]
+
+  @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     {:ok, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_params(%{"id" => id}, _url, socket) do
     case allow?(socket.assigns[:current_user], "Server") do
       true ->
@@ -16,7 +20,7 @@ defmodule TeiserverWeb.Microblog.Admin.TagLive.Show do
          socket
          |> assign(:tag, Microblog.get_tag!(id))
          |> assign(:site_menu_active, "microblog")
-         |> assign(:view_colour, Teiserver.Microblog.colours())}
+         |> assign(:view_colour, colours())}
 
       false ->
         {:noreply,

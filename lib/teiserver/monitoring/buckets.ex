@@ -7,7 +7,7 @@ defmodule Teiserver.Monitoring.Buckets do
 
   @behaviour Peep.Buckets
 
-  @impl true
+  @impl Peep.Buckets
   def config(%Telemetry.Metrics.Distribution{reporter_options: reporter_options}) do
     # PromEx configures buckets with `:reporter_options`
     buckets = Keyword.fetch!(reporter_options, :buckets)
@@ -21,13 +21,13 @@ defmodule Teiserver.Monitoring.Buckets do
             "expected buckets list to contain only numbers, got #{inspect(buckets)}"
     end
 
-    if buckets != Enum.uniq(Enum.sort(buckets)) do
+    if buckets != buckets |> Enum.sort() |> Enum.uniq() do
       raise ArgumentError, "expected buckets to be ordered ascending, got #{inspect(buckets)}"
     end
 
     number_of_buckets = length(buckets)
 
-    int_tree = :gb_trees.from_orddict(int_buckets(buckets, nil, 0))
+    int_tree = int_buckets(buckets, nil, 0) |> :gb_trees.from_orddict()
 
     float_tree =
       buckets
@@ -48,27 +48,27 @@ defmodule Teiserver.Monitoring.Buckets do
     }
   end
 
-  @impl true
+  @impl Peep.Buckets
   def number_of_buckets(config) do
     config.number_of_buckets
   end
 
-  @impl true
+  @impl Peep.Buckets
   def bucket_for(number, config) when is_integer(number) do
     case larger(number, config.int_tree) do
-      {_, bucket_idx} -> bucket_idx
+      {_key, bucket_idx} -> bucket_idx
       :none -> config.number_of_buckets
     end
   end
 
   def bucket_for(number, config) when is_float(number) do
     case larger(number, config.float_tree) do
-      {_, bucket_idx} -> bucket_idx
+      {_key, bucket_idx} -> bucket_idx
       :none -> config.number_of_buckets
     end
   end
 
-  @impl true
+  @impl Peep.Buckets
   def upper_bound(bucket_idx, config) do
     Map.get(config.upper_bound, bucket_idx, "+Inf")
   end

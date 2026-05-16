@@ -1,8 +1,8 @@
 defmodule Teiserver.Telemetry.ExportComplexMatchEventsTask do
   @moduledoc false
-  alias Teiserver.Telemetry.ComplexMatchEvent
-  alias Teiserver.Helper.{DatePresets}
+  alias Teiserver.Helper.DatePresets
   alias Teiserver.Repo
+  alias Teiserver.Telemetry.ComplexMatchEvent
   import Ecto.Query, warn: false
   import Teiserver.Helper.QueryHelpers
 
@@ -18,7 +18,7 @@ defmodule Teiserver.Telemetry.ExportComplexMatchEventsTask do
     }
   end
 
-  def perform(_) do
+  def perform(_args) do
     %{}
   end
 

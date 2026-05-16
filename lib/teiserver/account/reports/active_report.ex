@@ -1,12 +1,13 @@
 defmodule Teiserver.Account.ActiveReport do
+  @moduledoc false
   alias Teiserver.Helper.DatePresets
-  alias Teiserver.{Logging}
+  alias Teiserver.Logging
 
   @spec icon() :: String.t()
-  def icon(), do: "fa-solid fa-satellite-dish"
+  def icon, do: "fa-solid fa-satellite-dish"
 
   @spec permissions() :: String.t()
-  def permissions(), do: "Admin"
+  def permissions, do: "Moderator"
 
   @spec run(Plug.Conn.t(), map()) :: {map(), map()}
   def run(_conn, params) do
@@ -37,10 +38,10 @@ defmodule Teiserver.Account.ActiveReport do
         end)
       end)
       |> Enum.group_by(
-        fn {_, v} ->
+        fn {_player_id, v} ->
           get_grouping(v)
         end,
-        fn {k, _} ->
+        fn {k, _minutes} ->
           k
         end
       )
@@ -55,8 +56,8 @@ defmodule Teiserver.Account.ActiveReport do
       |> Enum.map(fn key ->
         v =
           player_counts
-          |> Enum.filter(fn {k, _} -> k >= key end)
-          |> Enum.map(fn {_, v} -> v end)
+          |> Enum.filter(fn {k, _count} -> k >= key end)
+          |> Enum.map(fn {_key, v} -> v end)
           |> Enum.sum()
 
         {key, v}

@@ -1,36 +1,41 @@
 defmodule TeiserverWeb.Account.SessionController do
-  use TeiserverWeb, :controller
+  alias Plug.Conn
   alias Teiserver.Account
+  alias Teiserver.Account.Guardian.Plug, as: GuardianPlug
+  alias Teiserver.Account.User
+  alias Teiserver.Account.UserLib
   alias Teiserver.Config
+  alias Teiserver.EmailHelper
+  alias Teiserver.Logging.Helpers, as: LoggingHelpers
   alias Teiserver.Logging.LoggingPlug
-  alias Account.{Guardian, User, UserLib}
+  use TeiserverWeb, :controller
   require Logger
 
-  @spec new(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def new(conn, _) do
+  @spec new(Conn.t(), map()) :: Conn.t()
+  def new(conn, _params) do
     changeset = Account.change_user(%User{})
-    maybe_user = Guardian.Plug.current_resource(conn)
+    maybe_user = GuardianPlug.current_resource(conn)
 
     if maybe_user do
       if conn.assigns[:current_user] do
         redirect(conn, to: "/")
       else
         conn
-        |> Guardian.Plug.sign_in(maybe_user)
-        |> Guardian.Plug.remember_me(maybe_user)
+        |> GuardianPlug.sign_in(maybe_user)
+        |> GuardianPlug.remember_me(maybe_user)
         |> redirect(to: "/")
       end
     else
       conn
-      |> Guardian.Plug.sign_out(clear_remember_me: true)
+      |> GuardianPlug.sign_out(clear_remember_me: true)
       |> assign(:changeset, changeset)
-      |> assign(:action, Routes.account_session_path(conn, :login))
+      |> assign(:action, ~p"/login")
       |> assign(:can_register?, Account.can_register_with_web?())
       |> render("new.html")
     end
   end
 
-  @spec login(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  @spec login(Conn.t(), map()) :: Conn.t()
   def login(conn, %{"user" => %{"email" => email, "password" => password}}) do
     email = String.trim(email)
 
@@ -81,7 +86,7 @@ defmodule TeiserverWeb.Account.SessionController do
                 conn
               )
 
-            _ ->
+            _other ->
               "There was a problem verifying the code."
           end
 
@@ -92,7 +97,7 @@ defmodule TeiserverWeb.Account.SessionController do
     end
   end
 
-  @spec one_time_login(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  @spec one_time_login(Conn.t(), map()) :: Conn.t()
   def one_time_login(conn, %{"value" => value}) do
     ip =
       conn
@@ -122,10 +127,8 @@ defmodule TeiserverWeb.Account.SessionController do
                ]
              ) do
           diff =
-            Timex.format_duration(
-              Timex.diff(expired_code.expires, Timex.now(), :duration),
-              :humanized
-            )
+            Timex.diff(expired_code.expires, Timex.now(), :duration)
+            |> Timex.format_duration(:humanized)
 
           Logger.debug(
             "SessionController.one_time_login User tried to use expired code (expired for #{diff})"
@@ -159,41 +162,41 @@ defmodule TeiserverWeb.Account.SessionController do
     end
   end
 
-  @spec logout(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def logout(conn, _) do
+  @spec logout(Conn.t(), map()) :: Conn.t()
+  def logout(conn, _params) do
     conn
-    |> Guardian.Plug.sign_out(clear_remember_me: true)
+    |> GuardianPlug.sign_out(clear_remember_me: true)
     |> redirect(to: "/login")
   end
 
   defp login_reply({:ok, user}, conn, redirect_route) do
     conn
     |> put_flash(:info, "Welcome back!")
-    |> Guardian.Plug.sign_in(user)
-    |> Guardian.Plug.remember_me(user)
+    |> GuardianPlug.sign_in(user)
+    |> GuardianPlug.remember_me(user)
     |> redirect(to: redirect_route || "/")
   end
 
   defp login_reply({:ok, user}, conn) do
-    cookies = Plug.Conn.fetch_cookies(conn, signed: ~w(_redirect_to)).cookies
+    cookies = Conn.fetch_cookies(conn, signed: ~w(_redirect_to)).cookies
 
     conn
     |> put_flash(:info, "Welcome back!")
-    |> Guardian.Plug.sign_in(user)
-    |> Guardian.Plug.remember_me(user)
-    |> Plug.Conn.delete_resp_cookie("_redirect_to", sign: true)
+    |> GuardianPlug.sign_in(user)
+    |> GuardianPlug.remember_me(user)
+    |> Conn.delete_resp_cookie("_redirect_to", sign: true)
     |> redirect(to: Map.get(cookies, "_redirect_to", "/"))
   end
 
   defp login_reply({:error, reason}, conn) do
     conn
-    |> Guardian.Plug.sign_out(clear_remember_me: true)
+    |> GuardianPlug.sign_out(clear_remember_me: true)
     |> put_flash(:danger, to_string(reason))
     |> assign(:result, to_string(reason))
     |> render("result.html")
   end
 
-  @spec forgot_password(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  @spec forgot_password(Conn.t(), map()) :: Conn.t()
   def forgot_password(conn, _params) do
     key = UUID.uuid1()
     value = UUID.uuid1()
@@ -205,7 +208,7 @@ defmodule TeiserverWeb.Account.SessionController do
     |> render("forgot_password.html")
   end
 
-  @spec send_password_reset(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  @spec send_password_reset(Conn.t(), map()) :: Conn.t()
   def send_password_reset(conn, %{"email" => email} = params) do
     # We use the || %{} to allow for the user not existing
     # If we let user be nil it messes up the existing_resets
@@ -274,7 +277,7 @@ defmodule TeiserverWeb.Account.SessionController do
         |> render("forgot_password.html")
 
       true ->
-        case Teiserver.EmailHelper.send_password_reset(user) do
+        case EmailHelper.send_password_reset(user) do
           :ok ->
             conn
             |> put_flash(:success, "Password reset email sent out")
@@ -292,9 +295,10 @@ defmodule TeiserverWeb.Account.SessionController do
     end
   end
 
-  @spec password_reset_form(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  @spec password_reset_form(Conn.t(), map()) :: Conn.t()
   def password_reset_form(conn, %{"value" => value}) do
     code = Account.get_code(value, preload: [:user])
+    changeset = Account.change_user(code.user)
 
     cond do
       code == nil ->
@@ -317,13 +321,16 @@ defmodule TeiserverWeb.Account.SessionController do
 
       true ->
         conn
+        |> add_breadcrumb(name: "Password", url: conn.request_path)
+        |> assign(:changeset, changeset)
+        |> assign(:user, code.user)
         |> assign(:value, value)
         |> render("password_reset_form.html")
     end
   end
 
-  @spec password_reset_post(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def password_reset_post(conn, %{"value" => value, "pass1" => pass1, "pass2" => pass2}) do
+  @spec update_password(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def update_password(conn, %{"value" => value, "user" => user_params}) do
     code = Account.get_code(value, preload: [:user])
 
     cond do
@@ -342,20 +349,10 @@ defmodule TeiserverWeb.Account.SessionController do
         |> put_flash(:danger, "Link has expired")
         |> redirect(to: "/")
 
-      pass1 != pass2 ->
-        conn
-        |> assign(:value, value)
-        |> put_flash(:danger, "Passwords need to match")
-        |> render("password_reset_form.html")
-
       true ->
-        user_params = %{
-          "password" => pass1
-        }
-
         case Account.password_reset_update_user(code.user, user_params) do
           {:ok, user} ->
-            Teiserver.Logging.Helpers.add_anonymous_audit_log(
+            LoggingHelpers.add_anonymous_audit_log(
               conn,
               "Account:User password reset",
               %{
@@ -373,11 +370,15 @@ defmodule TeiserverWeb.Account.SessionController do
               :success,
               "Your password has been reset; please login using the new details"
             )
-            |> Guardian.Plug.sign_out(clear_remember_me: true)
+            |> GuardianPlug.sign_out(clear_remember_me: true)
             |> redirect(to: "/")
 
-          {:error, _changeset} ->
-            raise "Error updating user password from password reset form"
+          {:error, %Ecto.Changeset{} = changeset} ->
+            render(conn, "password_reset_form.html",
+              user: code.user,
+              changeset: changeset,
+              value: value
+            )
         end
     end
   end

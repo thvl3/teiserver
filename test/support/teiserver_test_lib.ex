@@ -1,11 +1,23 @@
 defmodule Teiserver.TeiserverTestLib do
   @moduledoc false
-  import ExUnit.Assertions
-  import ExUnit.Callbacks
-  alias Teiserver.{Client, CacheUser, Account, SpringTcpServer}
+
+  alias ExUnit.Callbacks
+  alias Teiserver.Account
   alias Teiserver.Account.AccoladeLib
+  alias Teiserver.CacheUser
+  alias Teiserver.Client
+  alias Teiserver.Coordinator
   alias Teiserver.Coordinator.CoordinatorServer
   alias Teiserver.Data.Types, as: T
+  alias Teiserver.Game
+  alias Teiserver.Game.MatchRatingLib
+  alias Teiserver.Lobby
+  alias Teiserver.Moderation
+  alias Teiserver.SpringTcpServer
+  alias Teiserver.Telemetry
+  import ExUnit.Assertions
+  import ExUnit.Callbacks
+
   @host ~c"127.0.0.1"
 
   @spec raw_setup(map()) :: %{socket: port()}
@@ -22,7 +34,7 @@ defmodule Teiserver.TeiserverTestLib do
   end
 
   @spec new_user_name :: String.t()
-  def new_user_name() do
+  def new_user_name do
     "test_user_#{:rand.uniform(99_999_999) + 1_000_000}"
   end
 
@@ -49,9 +61,8 @@ defmodule Teiserver.TeiserverTestLib do
         user
         |> CacheUser.convert_user()
         |> CacheUser.add_user()
-        |> CacheUser.verify_user()
 
-      _ ->
+      _existing ->
         new_user()
     end
   end
@@ -78,7 +89,7 @@ defmodule Teiserver.TeiserverTestLib do
 
     %{socket: socket} = raw_setup(context)
     # Ignore the TASSERVER
-    _ = _recv_raw(socket)
+    _reply = _recv_raw(socket)
 
     # Now do our login
     # X03MO1qnZdYdgyfeuILPmQ== = Account.spring_md5_password("password")
@@ -87,7 +98,7 @@ defmodule Teiserver.TeiserverTestLib do
       "LOGIN #{user.name} X03MO1qnZdYdgyfeuILPmQ== 0 * LuaLobby Chobby\t1993717506 0d04a635e200f308\tb sp\n"
     )
 
-    _ = _recv_until(socket)
+    _reply = _recv_until(socket)
 
     pid =
       case Client.get_client_by_id(user.id) do
@@ -105,11 +116,11 @@ defmodule Teiserver.TeiserverTestLib do
     # This is because upon disconnecting, the server does a bunch of DB call for logging
     # and telemetry. The disconnection happen when the tcp socket is closed, and by
     # that time, the test has ended and the SQL sandbox closed.
-    ExUnit.Callbacks.on_exit(fn -> Teiserver.Client.disconnect(user.id) end)
+    Callbacks.on_exit(fn -> Client.disconnect(user.id) end)
     %{socket: socket, user: user, pid: pid}
   end
 
-  def _send_raw({:sslsocket, _, _} = socket, msg) do
+  def _send_raw({:sslsocket, _tcp, _tls} = socket, msg) do
     :ok = :ssl.send(socket, msg)
     :timer.sleep(100)
   end
@@ -119,7 +130,7 @@ defmodule Teiserver.TeiserverTestLib do
     :timer.sleep(100)
   end
 
-  def _recv_lines(), do: _recv_lines(1)
+  def _recv_lines, do: _recv_lines(1)
   def _recv_lines(:until_timeout), do: _recv_lines(99_999)
 
   def _recv_lines(lines) do
@@ -137,7 +148,7 @@ defmodule Teiserver.TeiserverTestLib do
               1 ->
                 value
 
-              _ ->
+              _other ->
                 value <> _recv_lines(lines - 1)
             end
         end
@@ -147,7 +158,7 @@ defmodule Teiserver.TeiserverTestLib do
     end
   end
 
-  def _recv_raw({:sslsocket, _, _} = socket) do
+  def _recv_raw({:sslsocket, _tcp, _tls} = socket) do
     case :ssl.recv(socket, 0, 500) do
       {:ok, reply} -> reply |> to_string()
       {:error, :timeout} -> :timeout
@@ -173,7 +184,7 @@ defmodule Teiserver.TeiserverTestLib do
 
   def _recv_until(socket), do: _recv_until(socket, "")
 
-  def _recv_until({:sslsocket, _, _} = socket, acc) do
+  def _recv_until({:sslsocket, _tcp, _tls} = socket, acc) do
     case :ssl.recv(socket, 0, 1000) do
       {:ok, reply} ->
         _recv_until(socket, acc <> to_string(reply))
@@ -193,14 +204,14 @@ defmodule Teiserver.TeiserverTestLib do
     end
   end
 
-  def mock_socket() do
+  def mock_socket do
     %{
       mock: true,
       transport: Teiserver.FakeTransport
     }
   end
 
-  def mock_state_raw() do
+  def mock_state_raw do
     socket = mock_socket()
 
     %{
@@ -338,26 +349,6 @@ defmodule Teiserver.TeiserverTestLib do
     ["Verified"]
   end
 
-  @spec make_clan(String.t(), map()) :: Teiserver.Clans.Clan.t()
-  def make_clan(name, params \\ %{}) do
-    {:ok, c} =
-      Teiserver.Clans.create_clan(
-        Map.merge(
-          %{
-            "name" => name,
-            "tag" => "[#{name}]",
-            "icon" => "fa far-house",
-            "colour" => "#001122",
-            "description" => "Description goes here",
-            "data" => %{}
-          },
-          params
-        )
-      )
-
-    c
-  end
-
   @spec make_lobby() :: {T.lobby_id(), pid}
   @spec make_lobby(map()) :: {T.lobby_id(), pid}
   def make_lobby(params \\ %{}) do
@@ -383,23 +374,10 @@ defmodule Teiserver.TeiserverTestLib do
         }
       }
       |> Map.merge(params)
-      |> Teiserver.Lobby.create_lobby()
-      |> Teiserver.Lobby.add_lobby()
+      |> Lobby.create_lobby()
+      |> Lobby.add_lobby()
 
     lobby.id
-  end
-
-  @spec make_clan_membership(integer(), integer(), map()) ::
-          Teiserver.Clans.ClanMembership.t()
-  def make_clan_membership(clan_id, user_id, data \\ %{}) do
-    {:ok, gm} =
-      Teiserver.Clans.create_clan_membership(%{
-        "clan_id" => clan_id,
-        "user_id" => user_id,
-        "role" => data["role"] || "Member"
-      })
-
-    gm
   end
 
   @spec make_battle(map()) :: map()
@@ -426,47 +404,48 @@ defmodule Teiserver.TeiserverTestLib do
       ip: "127.0.0.1"
     }
     |> Map.merge(params)
-    |> Teiserver.Lobby.create_lobby()
-    |> Teiserver.Lobby.add_lobby()
+    |> Lobby.create_lobby()
+    |> Lobby.add_lobby()
   end
 
   def create_moderation_user_report(target_id, reporter_id, params \\ %{}) do
-    Teiserver.Moderation.create_report_group_and_report(
-      Map.merge(
-        %{
-          reporter_id: reporter_id,
-          target_id: target_id,
-          type: "chat",
-          sub_type: "hate",
-          extra_text: "default extra text",
-          match_id: nil
-        },
-        params
-      )
+    Map.merge(
+      %{
+        reporter_id: reporter_id,
+        target_id: target_id,
+        type: "chat",
+        sub_type: "hate",
+        extra_text: "default extra text",
+        match_id: nil
+      },
+      params
     )
+    |> Moderation.create_report()
   end
 
-  def seed() do
+  def teiserver_seed do
     CoordinatorServer.get_coordinator_account()
-    Teiserver.Account.AccoladeBotServer.get_accolade_account()
 
-    Teiserver.Account.get_or_add_smurf_key_type("client_app_hash")
-    Teiserver.Account.get_or_add_smurf_key_type("chobby_hash")
-    Teiserver.Account.get_or_add_smurf_key_type("hw1")
-    Teiserver.Account.get_or_add_smurf_key_type("hw2")
-    Teiserver.Account.get_or_add_smurf_key_type("hw3")
+    Account.get_or_add_smurf_key_type("client_app_hash")
+    Account.get_or_add_smurf_key_type("chobby_hash")
+    Account.get_or_add_smurf_key_type("hw1")
+    Account.get_or_add_smurf_key_type("hw2")
+    Account.get_or_add_smurf_key_type("hw3")
 
-    Enum.each(Teiserver.Game.MatchRatingLib.rating_type_list(), fn rating_type ->
-      Teiserver.Game.get_or_add_rating_type(rating_type)
+    Enum.each(MatchRatingLib.rating_type_list(), fn rating_type ->
+      Game.get_or_add_rating_type(rating_type)
     end)
 
-    Teiserver.Telemetry.get_or_add_complex_server_event_type("Server startup")
-    Teiserver.Telemetry.get_or_add_simple_server_event_type("account.user_login")
-    Teiserver.Telemetry.get_or_add_simple_server_event_type("lobby.force_add_user_to_lobby")
-    Teiserver.Telemetry.get_or_add_complex_client_event_type("client.user_event")
-    Teiserver.Telemetry.get_or_add_complex_client_event_type("client.user_event")
+    Telemetry.get_or_add_complex_server_event_type("Server startup")
+    Telemetry.get_or_add_simple_server_event_type("account.user_login")
+    Telemetry.get_or_add_simple_server_event_type("lobby.force_add_user_to_lobby")
+    Telemetry.get_or_add_simple_server_event_type("disconnect")
+    Telemetry.get_or_add_simple_server_event_type("disconnect::tcp_closed with socket")
+    Telemetry.get_or_add_simple_server_event_type("disconnect:tcp_server terminate")
+    Telemetry.get_or_add_complex_client_event_type("client.user_event")
+    Telemetry.get_or_add_complex_client_event_type("client.user_event")
 
-    Teiserver.Telemetry.get_or_add_simple_lobby_event_type("remove_user_from_lobby")
+    Telemetry.get_or_add_simple_lobby_event_type("remove_user_from_lobby")
 
     seed_badge_types()
   end
@@ -485,7 +464,7 @@ defmodule Teiserver.TeiserverTestLib do
 
   returns :ok
   """
-  def clear_all_con_caches() do
+  def clear_all_con_caches do
     cache_list = [
       :telemetry_complex_client_event_types_cache,
       :telemetry_complex_lobby_event_types_cache,
@@ -495,7 +474,8 @@ defmodule Teiserver.TeiserverTestLib do
       :telemetry_simple_client_event_types_cache,
       :telemetry_simple_lobby_event_types_cache,
       :telemetry_simple_match_event_types_cache,
-      :telemetry_simple_server_event_types_cache
+      :telemetry_simple_server_event_types_cache,
+      :teiserver_game_rating_types
     ]
 
     Enum.each(cache_list, &clear_cache/1)
@@ -507,7 +487,7 @@ defmodule Teiserver.TeiserverTestLib do
     cache
     |> ConCache.ets()
     |> :ets.tab2list()
-    |> Enum.each(fn {key, _} -> ConCache.delete(cache, key) end)
+    |> Enum.each(fn {key, _value} -> ConCache.delete(cache, key) end)
   end
 
   def start_spring_server(context \\ %{}) do
@@ -532,12 +512,12 @@ defmodule Teiserver.TeiserverTestLib do
     {:ok, %{spring_server: Map.new(listeners)}}
   end
 
-  def start_coordinator!() do
-    assert {:ok, pid} = Teiserver.Coordinator.start_coordinator()
+  def start_coordinator! do
+    assert {:ok, pid} = Coordinator.start_coordinator()
 
     on_exit(fn ->
       assert :ok =
-               DynamicSupervisor.terminate_child(Teiserver.Coordinator.DynamicSupervisor, pid)
+               DynamicSupervisor.terminate_child(Coordinator.DynamicSupervisor, pid)
     end)
   end
 
@@ -575,11 +555,11 @@ defmodule Teiserver.TeiserverTestLib do
     %{socket: socket}
   end
 
-  defp make_async_transport() do
+  defp make_async_transport do
     %{send: fn _x, _y -> nil end}
   end
 
-  defp seed_badge_types() do
+  defp seed_badge_types do
     # Create the badge types
     if Enum.empty?(AccoladeLib.get_badge_types()) do
       {:ok, _badge_type1} =

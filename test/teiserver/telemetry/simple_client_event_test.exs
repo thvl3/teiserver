@@ -1,21 +1,23 @@
 defmodule Teiserver.Telemetry.SimpleClientEventTest do
   @moduledoc false
-  use Teiserver.DataCase
-  alias Teiserver.{Telemetry}
+
+  alias Ecto.Adapters.SQL
   alias Teiserver.TeiserverTestLib
+  alias Teiserver.Telemetry
+  use Teiserver.DataCase
 
   test "simple client events" do
     r = :rand.uniform(999_999_999)
 
     # Start by removing all client events
     query = "DELETE FROM telemetry_simple_client_events;"
-    Ecto.Adapters.SQL.query(Repo, query, [])
+    SQL.query(Repo, query, [])
 
     user = TeiserverTestLib.new_user("simple_client_event_user")
     assert Telemetry.list_simple_client_events() |> Enum.count() == 0
 
     # Log the event
-    {result, _} = Telemetry.log_simple_client_event(user.id, "client.simple_user_event-#{r}")
+    {result, _event} = Telemetry.log_simple_client_event(user.id, "client.simple_user_event-#{r}")
 
     assert result == :ok
 

@@ -1,14 +1,13 @@
 defmodule TeiserverWeb.Logging.AggregateViewLogController do
-  use TeiserverWeb, :controller
-
+  alias Teiserver.Helper.TimexHelper
   alias Teiserver.Logging
   alias Teiserver.Logging.AggregateViewLogLib
   alias Teiserver.Logging.AggregateViewLogsTask
-  alias Teiserver.Helper.TimexHelper
 
-  alias Teiserver.Helper.TimexHelper
+  use TeiserverWeb, :controller
 
   plug Bodyguard.Plug.Authorize,
+    fallback: TeiserverWeb.Controllers.BodyguardFallback,
     policy: Teiserver.Logging.AggregateViewLog,
     action: {Phoenix.Controller, :action_name},
     user: {Teiserver.Account.AuthLib, :current_user}

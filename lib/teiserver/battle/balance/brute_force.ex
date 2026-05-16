@@ -11,10 +11,13 @@ defmodule Teiserver.Battle.Balance.BruteForce do
 
   Only use for games with two teams and <=16 players
   """
+
   alias Teiserver.Battle.Balance.BalanceTypes, as: BT
   alias Teiserver.Battle.Balance.BruteForceTypes, as: BF
-  import Teiserver.Helper.NumberHelper, only: [format: 1]
+  alias Teiserver.Battle.Balance.LoserPicks
+  alias Teiserver.Helpers.Combi
   require Integer
+  import Teiserver.Helper.NumberHelper, only: [format: 1]
 
   @captain_diff_importance 1
   @rating_diff_importance 1
@@ -40,7 +43,7 @@ defmodule Teiserver.Battle.Balance.BruteForce do
 
       {:error, message} ->
         # Call another balancer
-        result = Teiserver.Battle.Balance.LoserPicks.perform(expanded_group, team_count, opts)
+        result = LoserPicks.perform(expanded_group, team_count, opts)
 
         new_logs =
           ["#{message} Will use another balance algorithm instead.", @splitter, result.logs]
@@ -100,7 +103,7 @@ defmodule Teiserver.Battle.Balance.BruteForce do
 
   @spec potential_teams(integer()) :: [integer()]
   def potential_teams(num_players) do
-    Teiserver.Helpers.Combi.get_single_teams(num_players)
+    Combi.get_single_teams(num_players)
   end
 
   def get_best_combo(players, parties) do
@@ -114,9 +117,7 @@ defmodule Teiserver.Battle.Balance.BruteForce do
 
     # Go through every possibility and get the combination with the lowest score
     Enum.map(combos, fn x ->
-      get_players_from_indexes(x, players_with_index)
-    end)
-    |> Enum.map(fn team ->
+      team = get_players_from_indexes(x, players_with_index)
       score_combo(team, players, parties)
     end)
     |> Enum.min_by(fn z ->
@@ -132,21 +133,21 @@ defmodule Teiserver.Battle.Balance.BruteForce do
 
   @spec get_st_dev([BF.player()]) :: any()
   def get_st_dev(team) do
-    if length(team) > 0 do
+    if Enum.empty?(team) do
+      0
+    else
       ratings = Enum.map(team, fn player -> player.rating end)
       Statistics.stdev(ratings)
-    else
-      0
     end
   end
 
   @spec get_captain_rating([BF.player()]) :: any()
   def get_captain_rating(team) do
-    if length(team) > 0 do
+    if Enum.empty?(team) do
+      0
+    else
       captain = Enum.max_by(team, fn player -> player.rating end, &>=/2)
       captain.rating
-    else
-      0
     end
   end
 
@@ -191,12 +192,12 @@ defmodule Teiserver.Battle.Balance.BruteForce do
 
   def count_broken_parties(first_team, parties) do
     Enum.count(parties, fn party ->
-      is_party_broken?(first_team, party)
+      party_broken?(first_team, party)
     end)
   end
 
-  @spec is_party_broken?([BF.player()], [String.t()]) :: any()
-  def is_party_broken?(team, party) do
+  @spec party_broken?([BF.player()], [String.t()]) :: any()
+  def party_broken?(team, party) do
     count =
       Enum.count(party, fn x ->
         Enum.any?(team, fn y ->

@@ -3,17 +3,19 @@ defmodule Teiserver.Communication.Cache do
   Cache and setup for communication stuff
   """
 
-  use Supervisor
+  alias Teiserver.Communication
   alias Teiserver.Helpers.CacheHelper
+
+  use Supervisor
 
   def start_link(opts) do
     with {:ok, sup} <- Supervisor.start_link(__MODULE__, :ok, opts),
-         :ok <- Teiserver.Communication.build_text_callback_cache() do
+         :ok <- Communication.build_text_callback_cache() do
       {:ok, sup}
     end
   end
 
-  @impl true
+  @impl Supervisor
   def init(:ok) do
     children = [
       CacheHelper.concache_perm_sup(:text_callback_trigger_lookup),

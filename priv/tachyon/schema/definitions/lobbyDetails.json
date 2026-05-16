@@ -9,10 +9,21 @@
         "mapName": { "type": "string" },
         "engineVersion": { "type": "string" },
         "gameVersion": { "type": "string" },
+        "gameOptions": {
+            "description": "object indexed by the game option key",
+            "type": "object",
+            "patternProperties": {
+                "^.*$": {
+                    "type": "object",
+                    "properties": { "value": { "type": "string" } },
+                    "required": ["value"]
+                }
+            }
+        },
         "allyTeamConfig": {
             "type": "object",
             "patternProperties": {
-                "^(.*)$": {
+                "^.*$": {
                     "description": "this represent an array, items should be sorted lexicographically on their keys",
                     "type": "object",
                     "properties": {
@@ -21,7 +32,7 @@
                         "teams": {
                             "type": "object",
                             "patternProperties": {
-                                "^(.*)$": {
+                                "^.*$": {
                                     "type": "object",
                                     "properties": {
                                         "maxPlayers": {
@@ -38,25 +49,43 @@
                 }
             }
         },
+        "areBossesEnabled": { "type": "boolean" },
+        "bosses": {
+            "type": "object",
+            "patternProperties": {
+                "^.*$": { "type": "object", "properties": {} }
+            }
+        },
         "players": {
             "type": "object",
             "patternProperties": {
-                "^(.*)$": {
+                "^.*$": {
                     "type": "object",
                     "properties": {
                         "id": { "$ref": "../definitions/userId.json" },
                         "allyTeam": { "type": "string" },
                         "team": { "type": "string" },
-                        "player": { "type": "string" }
+                        "player": { "type": "string" },
+                        "isReady": { "type": "boolean" },
+                        "assetStatus": {
+                            "enum": ["missing", "downloading", "complete"]
+                        }
                     },
-                    "required": ["id", "allyTeam", "team", "player"]
+                    "required": [
+                        "id",
+                        "allyTeam",
+                        "team",
+                        "player",
+                        "isReady",
+                        "assetStatus"
+                    ]
                 }
             }
         },
         "spectators": {
             "type": "object",
             "patternProperties": {
-                "^(.*)$": {
+                "^.*$": {
                     "type": "object",
                     "properties": {
                         "id": { "$ref": "../definitions/userId.json" },
@@ -69,7 +98,7 @@
         "bots": {
             "type": "object",
             "patternProperties": {
-                "^(.*)$": {
+                "^.*$": {
                     "type": "object",
                     "properties": {
                         "id": {
@@ -97,7 +126,7 @@
                         "options": {
                             "type": "object",
                             "patternProperties": {
-                                "^(.*)$": { "type": "string" }
+                                "^.*$": { "type": "string" }
                             }
                         }
                     },
@@ -116,9 +145,51 @@
             "description": "If a battle is currently happening, here are the info",
             "type": "object",
             "properties": {
+                "id": { "type": "string" },
                 "startedAt": { "$ref": "../definitions/unixTime.json" }
             },
-            "required": ["startedAt"]
+            "required": ["id", "startedAt"]
+        },
+        "currentVote": {
+            "type": "object",
+            "properties": {
+                "id": { "type": "string" },
+                "action": { "$ref": "../definitions/voteActions.json" },
+                "initiator": { "$ref": "../definitions/userId.json" },
+                "voters": {
+                    "description": "indexed by the userId. The initiator is also included in this object",
+                    "type": "object",
+                    "patternProperties": {
+                        "^.*$": {
+                            "type": "object",
+                            "properties": {
+                                "vote": {
+                                    "enum": ["pending", "yes", "no", "abstain"]
+                                }
+                            },
+                            "required": ["vote"]
+                        }
+                    }
+                },
+                "until": { "$ref": "../definitions/unixTime.json" }
+            },
+            "required": ["id", "action", "initiator", "voters", "until"]
+        },
+        "voteHistory": {
+            "type": "object",
+            "patternProperties": {
+                "^.*$": {
+                    "type": "object",
+                    "properties": {
+                        "vote": { "$ref": "../definitions/voteActions.json" },
+                        "outcome": {
+                            "$ref": "../definitions/voteOutcomes.json"
+                        },
+                        "finishedAt": { "$ref": "../definitions/unixTime.json" }
+                    },
+                    "required": ["vote", "outcome", "finishedAt"]
+                }
+            }
         }
     },
     "required": [
@@ -127,7 +198,10 @@
         "mapName",
         "engineVersion",
         "gameVersion",
+        "gameOptions",
         "allyTeamConfig",
+        "areBossesEnabled",
+        "bosses",
         "players",
         "spectators",
         "bots"

@@ -1,9 +1,16 @@
 defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
   @moduledoc false
-  use Oban.Worker, queue: :teiserver
-  alias Teiserver.{Account, Logging, Battle}
 
+  alias Ecto.Adapters.SQL
+  alias Teiserver.Account
+  alias Teiserver.Battle
+  alias Teiserver.Logging
+  alias Teiserver.Logging.ServerDayLog
+  alias Teiserver.Logging.Tasks.PersistServerDayTask
   alias Teiserver.Repo
+
+  use Oban.Worker, queue: :teiserver
+
   import Ecto.Query, warn: false
 
   @log_keep_days 30
@@ -24,7 +31,8 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
       total: []
     },
 
-    # Used to make calculating the end of day stats easier, this will not appear in the final result
+    # Used to make calculating the end of day stats easier,
+    # this will not appear in the final result
     tmp_reduction: %{
       unique_users: [],
       unique_players: []
@@ -64,15 +72,6 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
       lobby: [],
       menu: [],
       total: []
-    },
-
-    # Per user minute counts for the day as a whole
-    old_minutes_per_user: %{
-      total: %{},
-      player: %{},
-      spectator: %{},
-      lobby: %{},
-      menu: %{}
     }
   }
 
@@ -84,7 +83,8 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
       total: 0
     },
 
-    # Used to make calculating the end of day stats easier, this will not appear in the final result
+    # Used to make calculating the end of day stats easier,
+    # this will not appear in the final result
     tmp_reduction: %{
       unique_users: [],
       unique_players: []
@@ -124,21 +124,12 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
       lobby: 0,
       menu: 0,
       total: 0
-    },
-
-    # Per user minute counts for the day as a whole
-    old_minutes_per_user: %{
-      total: %{},
-      player: %{},
-      spectator: %{},
-      lobby: %{},
-      menu: %{}
     }
   }
 
   @impl Oban.Worker
   @spec perform(any) :: :ok
-  def perform(_) do
+  def perform(_job) do
     last_date = Logging.get_last_server_day_log()
 
     date =
@@ -157,7 +148,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
 
       if Timex.compare(new_date, Timex.today()) == -1 do
         %{}
-        |> Teiserver.Logging.Tasks.PersistServerDayTask.new()
+        |> PersistServerDayTask.new()
         |> Oban.insert()
       end
     end
@@ -183,7 +174,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
 
     # Delete old log if it exists
     delete_query =
-      from logs in Teiserver.Logging.ServerDayLog,
+      from logs in ServerDayLog,
         where: logs.date == ^(date |> Timex.to_date())
 
     Repo.delete_all(delete_query)
@@ -196,7 +187,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
     :ok
   end
 
-  def today_so_far() do
+  def today_so_far do
     date = Timex.today()
 
     0..@segment_count
@@ -224,7 +215,8 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
         total: segment.battles.total ++ [extend.battles.total]
       },
 
-      # Used to make calculating the end of day stats easier, this will not appear in the final result
+      # Used to make calculating the end of day stats easier,
+      # this will not appear in the final result
       tmp_reduction: %{
         unique_users: segment.tmp_reduction.unique_users ++ extend.tmp_reduction.unique_users,
         unique_players:
@@ -265,16 +257,6 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
         lobby: segment.peak_user_counts.lobby ++ [extend.peak_user_counts.lobby],
         menu: segment.peak_user_counts.menu ++ [extend.peak_user_counts.menu],
         total: segment.peak_user_counts.total ++ [extend.peak_user_counts.total]
-      },
-
-      # Per user minute counts for the day as a whole
-      old_minutes_per_user: %{
-        total: add_maps(segment.old_minutes_per_user.total, extend.old_minutes_per_user.total),
-        player: add_maps(segment.old_minutes_per_user.player, extend.old_minutes_per_user.player),
-        spectator:
-          add_maps(segment.old_minutes_per_user.spectator, extend.old_minutes_per_user.spectator),
-        lobby: add_maps(segment.old_minutes_per_user.lobby, extend.old_minutes_per_user.lobby),
-        menu: add_maps(segment.old_minutes_per_user.menu, extend.old_minutes_per_user.menu)
       }
     }
   end
@@ -285,43 +267,6 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
   defp calculate_segment_parts(logs) do
     count = Enum.count(logs)
 
-    empty_user_maps = %{
-      total: %{},
-      player: %{},
-      spectator: %{},
-      lobby: %{},
-      menu: %{}
-    }
-
-    user_maps =
-      logs
-      |> Enum.reduce(empty_user_maps, fn log, acc ->
-        %{
-          total:
-            add_maps(
-              acc.total,
-              Map.new(log["client"]["total"] || [], fn userid -> {userid, 1} end)
-            ),
-          player:
-            add_maps(
-              acc.player,
-              Map.new(log["client"]["player"] || [], fn userid -> {userid, 1} end)
-            ),
-          spectator:
-            add_maps(
-              acc.spectator,
-              Map.new(log["client"]["spectator"] || [], fn userid -> {userid, 1} end)
-            ),
-          lobby:
-            add_maps(
-              acc.lobby,
-              Map.new(log["client"]["lobby"] || [], fn userid -> {userid, 1} end)
-            ),
-          menu:
-            add_maps(acc.menu, Map.new(log["client"]["menu"] || [], fn userid -> {userid, 1} end))
-        }
-      end)
-
     %{
       # Average battle counts per segment
       battles: %{
@@ -330,7 +275,8 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
         total: sum_keys(logs, ~w(battle total)) / count
       },
 
-      # Used to make calculating the end of day stats easier, this will not appear in the final result
+      # Used to make calculating the end of day stats easier,
+      # this will not appear in the final result
       tmp_reduction: %{
         unique_users: concatenate_lists(logs, ~w(client total)),
         unique_players: concatenate_lists(logs, ~w(client player))
@@ -369,10 +315,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
         lobby: max_counts(logs, ~w(client lobby)),
         menu: max_counts(logs, ~w(client menu)),
         total: max_counts(logs, ~w(client total))
-      },
-
-      # Per user minute counts for the day as a whole
-      old_minutes_per_user: user_maps
+      }
     }
   end
 
@@ -391,7 +334,6 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
       )
       |> Enum.count()
 
-    # credo:disable-for-next-line Credo.Check.Design.TagTODO
     # TODO: Calculate number of battles that took place
     battles = 0
 
@@ -418,10 +360,10 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
   @spec get_logs(Date.t(), integer()) :: list()
   defp get_logs(date, segment_number) do
     start_time =
-      Timex.shift(date |> Timex.to_datetime(), minutes: segment_number * @segment_length)
+      date |> Timex.to_datetime() |> Timex.shift(minutes: segment_number * @segment_length)
 
     end_time =
-      Timex.shift(date |> Timex.to_datetime(), minutes: (segment_number + 1) * @segment_length)
+      date |> Timex.to_datetime() |> Timex.shift(minutes: (segment_number + 1) * @segment_length)
 
     Logging.list_server_minute_logs(
       search: [
@@ -444,7 +386,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
           DELETE FROM teiserver_server_minute_logs WHERE timestamp < $1
     """
 
-    Ecto.Adapters.SQL.query!(Repo, query, [before_timestamp])
+    SQL.query!(Repo, query, [before_timestamp])
   end
 
   defp concatenate_lists(items, path) do
@@ -473,12 +415,6 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
     |> Enum.reduce(0, fn row, acc ->
       acc + (get_in(row, path) || 0)
     end)
-  end
-
-  defp add_maps(m1, nil), do: m1
-
-  defp add_maps(m1, m2) do
-    Map.merge(m1, m2, fn _k, v1, v2 -> v1 + v2 end)
   end
 
   @match_blank_acc %{
@@ -659,7 +595,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
         "#{complexity}_#{section}"
       )
 
-    case Ecto.Adapters.SQL.query(Repo, query, [start_date, end_date]) do
+    case SQL.query(Repo, query, [start_date, end_date]) do
       {:ok, results} ->
         results.rows
         |> Map.new(fn [key, value] -> {key, value} end)
@@ -689,7 +625,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
         complexity
       )
 
-    case Ecto.Adapters.SQL.query(Repo, query, [start_date, end_date]) do
+    case SQL.query(Repo, query, [start_date, end_date]) do
       {:ok, results} ->
         results.rows
         |> Map.new(fn [key, value] -> {key, value} end)
@@ -721,7 +657,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
         complexity
       )
 
-    case Ecto.Adapters.SQL.query(Repo, query, [start_date, end_date]) do
+    case SQL.query(Repo, query, [start_date, end_date]) do
       {:ok, results} ->
         results.rows
         |> Map.new(fn [key, value] -> {key, value} end)
@@ -744,7 +680,7 @@ defmodule Teiserver.Logging.Tasks.PersistServerDayTask do
     """
 
     count_map =
-      case Ecto.Adapters.SQL.query(Repo, query, [start_date, end_date]) do
+      case SQL.query(Repo, query, [start_date, end_date]) do
         {:ok, results} ->
           results.rows
           |> Map.new(fn [key, value] -> {key, value} end)

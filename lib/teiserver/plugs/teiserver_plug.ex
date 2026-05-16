@@ -1,6 +1,8 @@
 defmodule Teiserver.ServerUserPlug do
-  import Plug.Conn
+  @moduledoc false
+  alias Phoenix.LiveView.Utils, as: LiveViewUtils
   alias Teiserver.CacheUser
+  import Plug.Conn
 
   def init(_opts) do
     # Keyword.fetch!(opts, :repo)
@@ -34,6 +36,6 @@ defmodule Teiserver.ServerUserPlug do
     server_user = CacheUser.get_user_by_id(userid)
 
     socket
-    |> Phoenix.LiveView.Utils.assign(:server_user, server_user)
+    |> LiveViewUtils.assign(:server_user, server_user)
   end
 end

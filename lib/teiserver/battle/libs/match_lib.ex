@@ -1,9 +1,13 @@
 defmodule Teiserver.Battle.MatchLib do
   @moduledoc false
-  use TeiserverWeb, :library
-  alias Teiserver.{Config, Battle, Account}
-  alias Teiserver.Battle.{Match, MatchMembership}
+
+  alias Teiserver.Account
+  alias Teiserver.Battle
+  alias Teiserver.Battle.Match
+  alias Teiserver.Battle.MatchMembership
+  alias Teiserver.Config
   alias Teiserver.Data.Types, as: T
+  use TeiserverWeb, :library
   require Logger
 
   @spec icon :: String.t()
@@ -37,7 +41,7 @@ defmodule Teiserver.Battle.MatchLib do
     end
   end
 
-  def list_game_types() do
+  def list_game_types do
     [
       "Duel",
       "Small Team",
@@ -50,7 +54,7 @@ defmodule Teiserver.Battle.MatchLib do
     ]
   end
 
-  def list_rated_game_types() do
+  def list_rated_game_types do
     [
       "Duel",
       "Small Team",
@@ -90,7 +94,7 @@ defmodule Teiserver.Battle.MatchLib do
 
           team_size =
             teams
-            |> Enum.map(fn {_, t} -> t |> Enum.count() end)
+            |> Enum.map(fn {_team_number, t} -> t |> Enum.count() end)
             |> Enum.max(fn -> 0 end)
 
           game_type = game_type(team_size, team_count, bots)
@@ -173,10 +177,10 @@ defmodule Teiserver.Battle.MatchLib do
       type_icon: icon(),
       item_id: match.id,
       item_type: "teiserver_battle_match",
-      # credo:disable-for-next-line Credo.Check.Design.TagTODO
+
       # TODO: Make this colour/icon based on type of match
       item_colour: StylingHelper.colours(colours()) |> elem(0),
-      item_icon: Teiserver.Battle.MatchLib.icon(),
+      item_icon: icon(),
       item_label: make_match_name(match),
       url: "/battle/#{match.id}"
     }
@@ -199,8 +203,8 @@ defmodule Teiserver.Battle.MatchLib do
   end
 
   @spec _search(Ecto.Query.t(), atom(), any()) :: Ecto.Query.t()
-  def _search(query, _, ""), do: query
-  def _search(query, _, nil), do: query
+  def _search(query, _key, ""), do: query
+  def _search(query, _key, nil), do: query
 
   def _search(query, :id, id) do
     from matches in query,
@@ -237,7 +241,7 @@ defmodule Teiserver.Battle.MatchLib do
       where: matches.server_uuid == ^server_uuid
   end
 
-  def _search(query, :server_uuid_not_nil, _) do
+  def _search(query, :server_uuid_not_nil, _value) do
     from matches in query,
       where: not is_nil(matches.server_uuid)
   end
@@ -336,7 +340,7 @@ defmodule Teiserver.Battle.MatchLib do
       where: matches.rating_type_id not in ^rating_type_ids
   end
 
-  def _search(query, :ready_for_post_process, _) do
+  def _search(query, :ready_for_post_process, _value) do
     from matches in query,
       where: matches.processed == false,
       where: not is_nil(matches.finished),
@@ -396,6 +400,11 @@ defmodule Teiserver.Battle.MatchLib do
   def _search(query, :inserted_before, timestamp) do
     from matches in query,
       where: matches.inserted_at < ^timestamp
+  end
+
+  def _search(query, :duration_greater_than, value) do
+    from matches in query,
+      where: matches.game_duration > ^value
   end
 
   def _search(query, :duration_less_than, value) do
@@ -552,8 +561,8 @@ defmodule Teiserver.Battle.MatchLib do
   end
 
   @spec calculate_exit_status(integer(), integer()) :: :stayed | :early | :abandoned | :noshow
-  def calculate_exit_status(nil, _), do: :stayed
-  def calculate_exit_status(_, nil), do: :stayed
+  def calculate_exit_status(nil, _game_duration), do: :stayed
+  def calculate_exit_status(_left_after, nil), do: :stayed
 
   def calculate_exit_status(left_after, game_duration) do
     diff = game_duration - left_after

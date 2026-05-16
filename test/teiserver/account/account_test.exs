@@ -1,12 +1,11 @@
 defmodule Teiserver.AccountTest do
-  use Teiserver.DataCase, async: true
-
   alias Teiserver.Account
   alias Teiserver.Account.AccountTestLib
+  alias Teiserver.Account.User
+
+  use Teiserver.DataCase, async: true
 
   describe "users" do
-    alias Teiserver.Account.User
-
     @valid_attrs %{
       colour: "#AA0000",
       icon: "fa-solid fa-home",
@@ -33,6 +32,7 @@ defmodule Teiserver.AccountTest do
     }
 
     test "list_users/0 returns users" do
+      AccountTestLib.user_fixture()
       assert Account.list_users() != []
     end
 
@@ -45,7 +45,7 @@ defmodule Teiserver.AccountTest do
           data_less_than: {"field", "123"},
           warn_mute_or_ban: nil,
 
-          # Tests the fallback to Central.UserLib
+          # Tests the fallback to Teiserver.UserLib
           name_like: ""
         ],
         joins: [:user_stat]
@@ -56,7 +56,6 @@ defmodule Teiserver.AccountTest do
         search: [
           bot: "Robot",
           moderator: "Moderator",
-          verified: "Verified",
           tester: "Tester",
           streamer: "Streamer",
           donor: "Donor",
@@ -70,7 +69,6 @@ defmodule Teiserver.AccountTest do
         search: [
           bot: "Person",
           moderator: "User",
-          verified: "Unverified",
           tester: "Normal",
           streamer: "Normal",
           donor: "Normal",
@@ -333,7 +331,8 @@ defmodule Teiserver.AccountTest do
   #   alias Teiserver.Account.BadgeType
 
   #   @valid_attrs %{"colour" => "#AA0000", "icon" => "fa-solid fa-home", "name" => "some name"}
-  #   @update_attrs %{"colour" => "#0000AA", "icon" => "fa-solid fa-wrench", "name" => "some updated name"}
+  #   @update_attrs %{"colour" => "#0000AA", "icon" => "fa-solid fa-wrench",
+  #     "name" => "some updated name"}
   #   @invalid_attrs %{"colour" => nil, "icon" => nil, "name" => nil}
 
   #   test "list_badge_types/0 returns badge_types" do
@@ -359,7 +358,8 @@ defmodule Teiserver.AccountTest do
 
   #   test "update_badge_type/2 with valid data updates the badge_type" do
   #     badge_type = AccountTestLib.badge_type_fixture(1)
-  #     assert {:ok, %BadgeType{} = badge_type} = Account.update_badge_type(badge_type, @update_attrs)
+  #     assert {:ok, %BadgeType{} = badge_type} =
+  #       Account.update_badge_type(badge_type, @update_attrs)
   #     assert badge_type.colour == "#0000AA"
   #     assert badge_type.icon == "fa-solid fa-wrench"
   #     assert badge_type.name == "some updated name"
